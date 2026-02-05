@@ -1,0 +1,44 @@
+<!doctype html>
+<html>
+  <body style="font-family: Arial, sans-serif; line-height: 1.4;">
+    <h2>{{ subject }}</h2>
+    <p>
+      Coverage window: <strong>{{ window_start }}</strong> to <strong>{{ window_end }}</strong> (UTC)
+    </p>
+
+    {% if highlights %}
+      <h3>Top highlights</h3>
+      <ul>
+        {% for it in highlights %}
+          <li>
+            <strong>{{ it.title }}</strong>
+            — <a href="{{ it.url }}">Link</a>
+            <span style="color: #666;">(source: {{ it.source }})</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% for section_name, items in sections.items() %}
+      {% if items %}
+        <h3>{{ section_name }}</h3>
+        <ul>
+          {% for it in items %}
+            <li>
+              <strong>{{ it.title }}</strong>
+              — <a href="{{ it.url }}">Link</a>
+              <span style="color: #666;">(source: {{ it.source }})</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endfor %}
+
+    <hr />
+    <p style="color: #666; font-size: 12px;">
+      You received this because you subscribed to DC Council updates.
+      <br />
+      <a href="{{ unsubscribe_url }}">Unsubscribe</a>
+    </p>
+  </body>
+</html>

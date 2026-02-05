@@ -1,0 +1,49 @@
+project:
+  name: "DC Council Weekly Digest"
+  timezone: "America/New_York"
+
+storage:
+  db_path: "db.sqlite"
+
+feeds:
+  - name: "Granicus video hearings"
+    source: "granicus_rss"
+    url: "https://dc.granicus.com/ViewPublisherRSS.php?mode=vpodcast&view_id=2"
+
+  - name: "YouTube channel videos"
+    source: "youtube"
+    url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCsRAGNZrk_9pfss7oyHs9GA"
+
+  - name: "Major news mentions (Google Alerts)"
+    source: "google_alerts"
+    url: "https://www.google.com/alerts/feeds/00411844104616880365/12946569030537193381"
+
+youtube_api:
+  channel_id: "UCsRAGNZrk_9pfss7oyHs9GA"
+  event_types: ["live", "upcoming"]
+  max_results_per_event_type: 25
+
+ranking:
+  source_weight:
+    granicus_rss: 3
+    youtube: 2
+    youtube_live: 3
+    youtube_upcoming: 3
+    google_alerts: 1
+
+highlights:
+  max_items: 8
+  keywords:
+    - "public hearing"
+    - "oversight"
+    - "budget"
+    - "committee"
+    - "vote"
+    - "markup"
+
+email:
+  provider: "gmail_smtp"
+  from_name: "DC Council Digest"
+  from_email: "guozhan0101@gmail.com"
+  subject_prefix: "DC Council Weekly Update"
+  base_url_for_unsubscribe: "http://127.0.0.1:8000/unsubscribe"
