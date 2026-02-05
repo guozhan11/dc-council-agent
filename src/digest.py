@@ -8,7 +8,11 @@ from db import connect, init_db, get_items_since, get_active_subscribers
 from utils import score_item
 
 import os
+import requests
 from emailer_gmail import send_email_gmail_smtp
+
+from dotenv import load_dotenv
+load_dotenv()
 
 
 def load_config(path: str) -> dict:
@@ -35,6 +39,14 @@ def build_plain_text(subject: str, highlights: list, sections: dict, unsubscribe
     lines.append(f"Unsubscribe: {unsubscribe_url}")
     return "\n".join(lines)
 
+def get_active_subscribers_from_apps_script() -> list[dict]:
+    base = os.environ["SUBSCRIBERS_API_URL"].rstrip("/")
+    key = os.environ["SUBSCRIBERS_API_KEY"]
+    url = f"{base}?path=active_subscribers&key={key}"
+    resp = requests.get(url, timeout=20)
+    resp.raise_for_status()
+    data = resp.json()
+    return data.get("items", [])
 
 def main() -> int:
     config_path = "../config.yaml"
@@ -84,7 +96,7 @@ def main() -> int:
     email_cfg = cfg["email"]
     subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
 
-    subscribers = get_active_subscribers(conn)
+    subscribers = get_active_subscribers_from_apps_script()
     if not subscribers:
         print("No active subscribers. Exiting.")
         return 0
@@ -103,7 +115,7 @@ def main() -> int:
     for sub in subscribers:
         to_email = sub["email"]
         token = sub["unsubscribe_token"]
-        unsubscribe_url = f"{base_unsub}?email={to_email}&token={token}"
+        unsubscribe_url = f"{base_unsub}&token={token}"
 
         html = template.render(
             subject=subject,

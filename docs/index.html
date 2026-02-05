@@ -1,0 +1,42 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>DC Council Weekly Digest</title>
+  </head>
+  <body>
+    <h2>Subscribe</h2>
+    <p>Get a weekly email digest of DC Council updates.</p>
+
+    <form id="subForm">
+      <input id="email" type="email" placeholder="you@example.com" required />
+      <button type="submit">Subscribe</button>
+    </form>
+
+    <p id="msg"></p>
+
+    <script>
+      const API = "https://script.google.com/macros/s/AKfycbxz7CKIDDGD7NGHmF97mFLt5zJ3sdap5aK6dgc-mopyYs91-R0WQpTI7atSRTdOmPQ2/exec";
+
+      document.getElementById("subForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const email = document.getElementById("email").value.trim();
+        const msg = document.getElementById("msg");
+        msg.textContent = "Submitting...";
+
+        const resp = await fetch(API + "?path=subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.ok) {
+          msg.textContent = "Subscribed! You’ll receive the next weekly digest.";
+        } else {
+          msg.textContent = "Error: " + (data.error || "unknown");
+        }
+      });
+    </script>
+  </body>
+</html>

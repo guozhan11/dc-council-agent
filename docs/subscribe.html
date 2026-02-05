@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Subscribe — DC Council Weekly Digest</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+      input { width: 100%; padding: 12px; font-size: 16px; margin: 10px 0; }
+      button { padding: 12px 16px; font-size: 16px; cursor: pointer; }
+      .msg { margin-top: 12px; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>DC Council Weekly Digest</h1>
+    <p>Enter your email to subscribe.</p>
+
+    <input id="email" type="email" placeholder="you@example.com" required />
+    <button id="btn">Subscribe</button>
+
+    <div id="msg" class="msg"></div>
+
+    <script>
+      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2ZqprwlWgRr2mVNaVkkuuQWYbnozHJKeW7jLf8nheMQc8rGOdsEwDRxEwvC4PPRkU/exec";
+
+      const emailEl = document.getElementById("email");
+      const msgEl = document.getElementById("msg");
+      const btnEl = document.getElementById("btn");
+
+      function setMsg(text) {
+        msgEl.textContent = text;
+      }
+
+      btnEl.addEventListener("click", async () => {
+        const email = emailEl.value.trim();
+        if (!email) return setMsg("Please enter an email.");
+
+        setMsg("Submitting...");
+        btnEl.disabled = true;
+
+        try {
+          const resp = await fetch(`${WEB_APP_URL}?path=subscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          });
+
+          const text = await resp.text();
+          let data;
+          try { data = JSON.parse(text); } catch { data = { raw: text }; }
+
+          if (!resp.ok) {
+            setMsg(`Error (${resp.status}): ${JSON.stringify(data, null, 2)}`);
+            return;
+          }
+
+          // Expect something like: { ok: true, message: "...", unsubscribe_url: "..." }
+          setMsg(`Subscribed ✅\n\n${JSON.stringify(data, null, 2)}`);
+        } catch (err) {
+          setMsg("Network error: " + err);
+        } finally {
+          btnEl.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

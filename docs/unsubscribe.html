@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Unsubscribe — DC Council Weekly Digest</title>
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
+      .msg { margin-top: 12px; white-space: pre-wrap; }
+      button { padding: 12px 16px; font-size: 16px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Unsubscribe</h1>
+    <p id="status">Loading…</p>
+    <button id="btn" style="display:none;">Confirm Unsubscribe</button>
+    <div id="msg" class="msg"></div>
+
+    <script>
+      const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2ZqprwlWgRr2mVNaVkkuuQWYbnozHJKeW7jLf8nheMQc8rGOdsEwDRxEwvC4PPRkU/exec"; //
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
+
+      const statusEl = document.getElementById("status");
+      const msgEl = document.getElementById("msg");
+      const btnEl = document.getElementById("btn");
+
+      function setMsg(text) { msgEl.textContent = text; }
+
+      if (!token) {
+        statusEl.textContent = "Missing token. Please use the unsubscribe link from an email.";
+      } else {
+        statusEl.textContent = "Click to confirm unsubscribe.";
+        btnEl.style.display = "inline-block";
+      }
+
+      btnEl.addEventListener("click", async () => {
+        btnEl.disabled = true;
+        setMsg("Unsubscribing...");
+        try {
+          const resp = await fetch(`${WEB_APP_URL}?path=unsubscribe&token=${encodeURIComponent(token)}`);
+          const text = await resp.text();
+          setMsg(text);
+          statusEl.textContent = "Done.";
+        } catch (err) {
+          setMsg("Network error: " + err);
+          btnEl.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

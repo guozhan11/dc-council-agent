@@ -46,4 +46,4 @@ email:
   from_name: "DC Council Digest"
   from_email: "guozhan0101@gmail.com"
   subject_prefix: "DC Council Weekly Update"
-  base_url_for_unsubscribe: "http://127.0.0.1:8000/unsubscribe"
+  base_url_for_unsubscribe: "https://script.google.com/macros/s/AKfycbxz7CKIDDGD7NGHmF97mFLt5zJ3sdap5aK6dgc-mopyYs91-R0WQpTI7atSRTdOmPQ2/exec?path=unsubscribe"
