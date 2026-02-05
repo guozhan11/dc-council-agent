@@ -46,4 +46,5 @@ email:
   from_name: "DC Council Digest"
   from_email: "guozhan0101@gmail.com"
   subject_prefix: "DC Council Weekly Update"
-  base_url_for_unsubscribe: "https://script.google.com/macros/s/AKfycbxz7CKIDDGD7NGHmF97mFLt5zJ3sdap5aK6dgc-mopyYs91-R0WQpTI7atSRTdOmPQ2/exec?path=unsubscribe"
+  email:
+  base_url_for_unsubscribe: "https://guozhan0101.github.io/WIP-dc-council-agent/unsubscribe.html"
