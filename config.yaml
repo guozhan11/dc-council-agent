@@ -47,4 +47,4 @@ email:
   from_email: "guozhan0101@gmail.com"
   subject_prefix: "DC Council Weekly Update"
   email:
-  base_url_for_unsubscribe: "https://guozhan0101.github.io/WIP-dc-council-agent/unsubscribe.html"
+  base_url_for_unsubscribe: "https://guozhan11.github.io/WIP-dc-council-agent/unsubscribe.html"

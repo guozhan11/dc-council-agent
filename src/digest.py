@@ -1,17 +1,17 @@
 import sys
+import os
 import yaml
+import requests
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from jinja2 import Environment, FileSystemLoader
-
-from db import connect, init_db, get_items_since, get_active_subscribers
-from utils import score_item
-
-import os
-import requests
-from emailer_gmail import send_email_gmail_smtp
-
 from dotenv import load_dotenv
+
+from db import connect, init_db, get_items_since
+from utils import score_item
+from emailer_gmail import send_email_gmail_smtp
+from summarizer_openai import summarize_updates
+
 load_dotenv()
 
 
@@ -25,7 +25,7 @@ def build_plain_text(subject: str, highlights: list, sections: dict, unsubscribe
     if highlights:
         lines.append("Top highlights")
         for it in highlights:
-            lines.append(f"- {it['title']} ({it['source']}): {it['url']}")
+            lines.append(f"- {it.get('title')} ({it.get('source')}): {it.get('url')}")
         lines.append("")
 
     for section_name, items in sections.items():
@@ -33,20 +33,26 @@ def build_plain_text(subject: str, highlights: list, sections: dict, unsubscribe
             continue
         lines.append(section_name)
         for it in items:
-            lines.append(f"- {it['title']} ({it['source']}): {it['url']}")
+            lines.append(f"- {it.get('title')} ({it.get('source')}): {it.get('url')}")
         lines.append("")
 
     lines.append(f"Unsubscribe: {unsubscribe_url}")
     return "\n".join(lines)
 
+
 def get_active_subscribers_from_apps_script() -> list[dict]:
-    base = os.environ["SUBSCRIBERS_API_URL"].rstrip("/")
-    key = os.environ["SUBSCRIBERS_API_KEY"]
+    base = os.environ.get("SUBSCRIBERS_API_URL", "").rstrip("/")
+    key = os.environ.get("SUBSCRIBERS_API_KEY", "")
+    if not base or not key:
+        raise RuntimeError("Missing SUBSCRIBERS_API_URL or SUBSCRIBERS_API_KEY environment variables.")
+
     url = f"{base}?path=active_subscribers&key={key}"
     resp = requests.get(url, timeout=20)
     resp.raise_for_status()
-    data = resp.json()
-    return data.get("items", [])
+
+    # If Apps Script returns HTML (not JSON), this will fail:
+    return resp.json().get("items", [])
+
 
 def main() -> int:
     config_path = "../config.yaml"
@@ -66,19 +72,22 @@ def main() -> int:
 
     items = get_items_since(conn, window_start)
 
+    # ---- scoring/sorting FIRST (so AI sees the most important items) ----
     source_weight = cfg["ranking"]["source_weight"]
     keywords = cfg["highlights"]["keywords"]
     max_highlights = int(cfg["highlights"]["max_items"])
 
-    # Score + sort
     for it in items:
         it["score"] = score_item(it, source_weight, keywords)
 
-    items_sorted = sorted(items, key=lambda x: (x["score"], x.get("published_at") or x.get("created_at")), reverse=True)
+    items_sorted = sorted(
+        items,
+        key=lambda x: (x.get("score", 0), x.get("published_at") or x.get("created_at") or ""),
+        reverse=True,
+    )
 
     highlights = items_sorted[:max_highlights]
 
-    # Sections
     sections = defaultdict(list)
     for it in items_sorted:
         src = it.get("source", "other")
@@ -89,7 +98,25 @@ def main() -> int:
         else:
             sections["News mentions & other sources"].append(it)
 
-    # Render HTML
+    # ---- AI summary (use top K items only to control cost) ----
+    ai_summary = None
+    try:
+        top_for_ai = items_sorted[:40]  # adjust (20-60 is typical)
+        ai_summary = summarize_updates(
+            top_for_ai,
+            model="gpt-4.1-mini",
+            max_bullets=8,
+        )
+    except Exception as e:
+        ai_summary = {
+            "headline": "Weekly updates",
+            "bullets": [],
+            "sources": [],
+            "error": str(e),
+        }
+
+    # ---- Template setup (do this BEFORE render) ----
+    # NOTE: set this to the actual folder name that contains weekly_email.html
     env = Environment(loader=FileSystemLoader("../template"))
     template = env.get_template("weekly_email.html")
 
@@ -97,6 +124,10 @@ def main() -> int:
     subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
 
     subscribers = get_active_subscribers_from_apps_script()
+
+    test_to = os.environ.get("TEST_TO_EMAIL", "").strip()
+    if test_to:
+        subscribers = [{"email": test_to, "unsubscribe_token": "TESTTOKEN"}]
     if not subscribers:
         print("No active subscribers. Exiting.")
         return 0
@@ -110,12 +141,16 @@ def main() -> int:
     if not smtp_user or not smtp_pass:
         raise RuntimeError("Missing GMAIL_SMTP_USERNAME or GMAIL_SMTP_APP_PASSWORD environment variables.")
 
+    # Unsubscribe base should be your Apps Script /exec URL
+    # Example: https://script.google.com/macros/s/XXX/exec
     base_unsub = email_cfg["base_url_for_unsubscribe"].rstrip("/")
 
     for sub in subscribers:
         to_email = sub["email"]
         token = sub["unsubscribe_token"]
-        unsubscribe_url = f"{base_unsub}&token={token}"
+
+        # If your Apps Script expects /exec?path=unsubscribe&token=...
+        unsubscribe_url = f"{base_unsub}?path=unsubscribe&token={token}"
 
         html = template.render(
             subject=subject,
@@ -124,19 +159,23 @@ def main() -> int:
             highlights=highlights,
             sections=dict(sections),
             unsubscribe_url=unsubscribe_url,
+            ai_summary=ai_summary,
         )
         text = build_plain_text(subject, highlights, dict(sections), unsubscribe_url)
 
+        # If your send_email_gmail_smtp DOES accept from_name, keep it.
+        # If not, remove from_name.
         send_email_gmail_smtp(
             smtp_username=smtp_user,
             smtp_app_password=smtp_pass,
             from_email=email_cfg["from_email"],
-            from_name=email_cfg["from_name"],
             to_email=to_email,
             subject=subject,
             html_content=html,
             text_content=text,
+            from_name=email_cfg.get("from_name", ""),
         )
+
         print(f"Sent to {to_email}")
 
     print("Weekly digest sent.")

@@ -6,7 +6,59 @@
       Coverage window: <strong>{{ window_start }}</strong> to <strong>{{ window_end }}</strong> (UTC)
     </p>
 
+    {# -------------------- AI SUMMARY SECTION -------------------- #}
+    {% if ai_summary and ai_summary.bullets and ai_summary.bullets|length > 0 %}
+      <hr />
+      <h3 style="margin-bottom: 6px;">AI summary</h3>
+
+      {% if ai_summary.headline %}
+        <p style="margin-top: 0; color: #333;"><strong>{{ ai_summary.headline }}</strong></p>
+      {% endif %}
+
+      <ul>
+        {% for b in ai_summary.bullets %}
+          <li style="margin-bottom: 8px;">
+            {{ b.text }}
+            {% if b.sources and b.sources|length > 0 %}
+              <span style="color: #666; font-size: 12px;">
+                {% for s in b.sources %}
+                  [{{ s }}]{% if not loop.last %} {% endif %}
+                {% endfor %}
+              </span>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if ai_summary.sources and ai_summary.sources|length > 0 %}
+        <details style="margin-top: 8px;">
+          <summary style="cursor: pointer; color: #444;">Sources (click to expand)</summary>
+          <ol style="color: #444; font-size: 13px;">
+            {% for s in ai_summary.sources %}
+              <li style="margin: 6px 0;">
+                {% if s.url %}
+                  <a href="{{ s.url }}">{{ s.title or ("Source " ~ s.n) }}</a>
+                {% else %}
+                  {{ s.title or ("Source " ~ s.n) }}
+                {% endif %}
+                {% if s.source %}
+                  <span style="color: #777;"> — {{ s.source }}</span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        </details>
+      {% endif %}
+
+      {% if ai_summary.error %}
+        <p style="color: #b00; font-size: 12px;">
+          (AI summary fallback: {{ ai_summary.error }})
+        </p>
+      {% endif %}
+    {% endif %}
+    
     {% if highlights %}
+      <hr />
       <h3>Top highlights</h3>
       <ul>
         {% for it in highlights %}
