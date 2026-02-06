@@ -25,6 +25,7 @@
     <iframe name="hidden_iframe" id="hidden_iframe"></iframe>
 
     <script>
+      // IMPORTANT: use your /exec URL
       const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2ZqprwlWgRr2mVNaVkkuuQWYbnozHJKeW7jLf8nheMQc8rGOdsEwDRxEwvC4PPRkU/exec";
 
       const formEl = document.getElementById("form");
@@ -33,16 +34,17 @@
 
       function setMsg(text) { msgEl.textContent = text; }
 
-      // This hits doPost() with e.parameter.path === "subscribe"
+      // This will hit doPost(e) with e.parameter.path === "subscribe" and e.parameter.email set
       formEl.action = `${WEB_APP_URL}?path=subscribe`;
 
       formEl.addEventListener("submit", () => {
         setMsg("Submitting...");
         btnEl.disabled = true;
 
-        // We cannot read the response across origins, but the request will succeed.
+        // We can’t read the cross-origin response from Apps Script.
+        // But the POST will still go through if the web app is deployed correctly.
         window.setTimeout(() => {
-          setMsg("Submitted ✅\n\nCheck the subscribers sheet to confirm your email was added.");
+          setMsg("Submitted ✅\n\nNow check the subscribers sheet: your email should appear.");
           btnEl.disabled = false;
         }, 1200);
       });
