@@ -1,33 +1,28 @@
 # DC Council Agent
 
-A small end-to-end system that collects public **DC Council** updates from multiple sources, stores them in a database, and sends a **weekly email digest** to subscribers. The digest can optionally include an **AI-written summary** (with links to original sources).
+A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. Subscribers are managed via a Google Apps Script + Google Sheet (subscribe/unsubscribe + “active subscribers” API). The email can optionally include an OpenAI-generated summary while still listing sources/links.
 
 ---
 
-## Why this exists
+## What this repo does
 
-DC Council information is spread across different channels (official pages, video archives, YouTube streams, media mentions, etc.). This project consolidates those signals into one weekly update that is easy to skim.
-
----
-
-## What it does
-
-- **Collects updates** from multiple sources (primarily RSS/Atom feeds and other public endpoints)
-- **Stores items** in a local SQLite database and deduplicates them
-- **Ranks and groups** items (e.g., official hearings vs. other mentions)
-- **Generates a weekly digest email** using an HTML template
-- **Manages subscribers** via a lightweight Google Apps Script + Google Sheet workflow
-- **Optional:** Uses the OpenAI API to produce a readable summary while keeping citations/links
+1. **Collectors** gather items from different sources (RSS, YouTube, etc.).
+2. **SQLite** stores normalized items (deduped).
+3. **Digest sender** pulls the last 7 days of items, ranks them, optionally summarizes via OpenAI, renders an HTML email (Jinja2), and sends via Gmail SMTP.
+4. **Subscriber service** (Google Apps Script) stores subscriber emails + unsubscribe tokens in a Google Sheet and exposes endpoints used by the Python sender.
 
 ---
 
-## Repo structure (high level)
+## Folder structure
 
 ```text
 .
-├── src/            # Python code (collect, store, digest, email, OpenAI summarizer)
-├── template/       # Jinja2 email templates (weekly_email.html)
-├── docs/           # GitHub Pages site (subscribe/unsubscribe pages)
-├── config.yaml     # Main configuration (feeds, ranking, email)
-├── db.sqlite       # SQLite database (generated locally)
-└── requirements.txt
+├── .github/                   # GitHub workflows / configs (optional)
+├── config.yaml                # Main project configuration
+├── db.sqlite                  # Local SQLite database (generated)
+├── requirements.txt           # Python dependencies
+├── docs/                      # GitHub Pages static site (subscribe/unsubscribe pages)
+├── src/                       # Main Python source code (digest + utilities)
+├── template/                  # Email templates (Jinja2 HTML)
+├── x-api/                     # Experiments / scripts using X API (optional)
+└── x-scraper/                 # Scraper experiments (optional)
