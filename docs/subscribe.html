@@ -52,7 +52,7 @@
 
       iframeEl.addEventListener("load", () => {
         if (!isSubmitting) return;
-        finishSubmit("Submitted ✅\n\nNow check the subscribers sheet: your email should appear.");
+        finishSubmit("Submitted ✅");
       });
 
       formEl.addEventListener("submit", (e) => {
@@ -62,7 +62,7 @@
         isSubmitting = true;
 
         fallbackTimer = window.setTimeout(() => {
-          finishSubmit("Submitted ✅\n\nIf you don't see your email, try again or check the Apps Script logs.");
+          finishSubmit("Submitted ✅");
         }, 4000);
 
         try {
@@ -76,13 +76,13 @@
             body: formData,
           })
             .then(() => {
-              finishSubmit("Submitted ✅\n\nNow check the subscribers sheet: your email should appear.");
+              finishSubmit("Submitted ✅");
             })
             .catch(() => {
-              finishSubmit("Submission failed. Please try again or check the Apps Script logs.");
+              finishSubmit("Submission failed. Please try again or contact gz163@georgetown.edu for assistance.");
             });
         } catch (err) {
-          finishSubmit("Submission failed. Please try again or check the Apps Script logs.");
+          finishSubmit("Submission failed. Please try again or contact gz163@georgetown.edu for assistance.");
         }
       });
     </script>
