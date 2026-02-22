@@ -2,7 +2,7 @@
 
 A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. The newsletter content is generated using OpenAI API with daily collected updates as sources. Links to mentioned events are included for reference and verification.
 
-Subscribe [here](https://guozhan11.github.io/WIP-dc-council-agent/)!
+Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 ---
 
@@ -10,7 +10,7 @@ Subscribe [here](https://guozhan11.github.io/WIP-dc-council-agent/)!
 
 1. **Collectors** gather items from different sources (RSS, YouTube, etc.).
 2. **SQLite** stores normalized items (deduped).
-3. **Digest sender** pulls the last 7 days of items, ranks them, optionally summarizes via OpenAI, renders an HTML email (Jinja2), and sends via Gmail SMTP.
+3. **Digest sender** pulls the last 7 days of items, ranks them, optionally summarizes via OpenAI, renders an HTML email, and sends via Gmail SMTP.
 4. **Subscriber service** (Google Apps Script) stores subscriber emails + unsubscribe tokens in a Google Sheet and exposes endpoints used by the Python sender.
 
 ---
