@@ -104,23 +104,7 @@ def main() -> int:
             sections["News mentions & other sources"].append(it)
 
     # ---- AI summary (use top K items only to control cost) ----
-    ai_summary = None
-    try:
-        top_for_ai = items_sorted[:40]  # adjust (20-60 is typical)
-        ai_summary = summarize_updates(
-            top_for_ai,
-            model="gpt-4.1-mini",
-            max_bullets=3,
-        )
-        source_url_map = {
-            s.get("n"): s.get("url")
-            for s in ai_summary.get("sources", [])
-            if s.get("n") and s.get("url")
-        }
-    except Exception as e:
-        print(f"AI summary error: {e}")
-        print("Aborting send: AI summary failed to generate.")
-        return 1
+    top_for_ai = items_sorted[:40]  # adjust (20-60 is typical)
 
     # ---- Template setup (do this BEFORE render) ----
     # NOTE: set this to the actual folder name that contains weekly_email.html
@@ -128,9 +112,6 @@ def main() -> int:
     template = env.get_template("weekly_email.html")
 
     email_cfg = cfg["email"]
-    fallback_subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
-    subject = (ai_summary or {}).get("headline") or fallback_subject
-
     subscribers = get_active_subscribers_from_apps_script()
 
     test_to = os.environ.get("TEST_TO_EMAIL", "").strip()
@@ -139,6 +120,42 @@ def main() -> int:
     if not subscribers:
         print("No active subscribers. Exiting.")
         return 0
+
+    summaries_by_email = {}
+    for sub in subscribers:
+        interests_parts = []
+        if sub.get("topics"):
+            interests_parts.append(str(sub.get("topics")).strip())
+        if sub.get("interests"):
+            interests_parts.append(str(sub.get("interests")).strip())
+        interests = "; ".join([p for p in interests_parts if p]) or None
+
+        try:
+            ai_summary = summarize_updates(
+                top_for_ai,
+                model="gpt-4.1-mini",
+                max_bullets=3,
+                interests=interests,
+            )
+        except Exception as e:
+            print(f"AI summary error for {sub.get('email')}: {e}")
+            print("Aborting send: AI summary failed to generate.")
+            return 1
+
+        source_url_map = {
+            s.get("n"): s.get("url")
+            for s in ai_summary.get("sources", [])
+            if s.get("n") and s.get("url")
+        }
+
+        fallback_subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
+        subject = (ai_summary or {}).get("headline") or fallback_subject
+
+        summaries_by_email[sub["email"]] = {
+            "ai_summary": ai_summary,
+            "source_url_map": source_url_map,
+            "subject": subject,
+        }
 
     provider = email_cfg.get("provider", "gmail_smtp")
     if provider != "gmail_smtp":
@@ -160,17 +177,18 @@ def main() -> int:
         # If your Apps Script expects /exec?path=unsubscribe&token=...
         unsubscribe_url = f"{base_unsub}?path=unsubscribe&token={token}"
 
+        summary_bundle = summaries_by_email.get(to_email, {})
         html = template.render(
-            subject=subject,
+            subject=summary_bundle.get("subject"),
             window_start=window_start_date,
             window_end=window_end_date,
             highlights=highlights,
             sections=dict(sections),
             unsubscribe_url=unsubscribe_url,
-            ai_summary=ai_summary,
-            source_url_map=source_url_map,
+            ai_summary=summary_bundle.get("ai_summary"),
+            source_url_map=summary_bundle.get("source_url_map"),
         )
-        text = build_plain_text(subject, highlights, dict(sections), unsubscribe_url)
+        text = build_plain_text(summary_bundle.get("subject"), highlights, dict(sections), unsubscribe_url)
 
         # If your send_email_gmail_smtp DOES accept from_name, keep it.
         # If not, remove from_name.
@@ -179,7 +197,7 @@ def main() -> int:
             smtp_app_password=smtp_pass,
             from_email=email_cfg["from_email"],
             to_email=to_email,
-            subject=subject,
+            subject=summary_bundle.get("subject"),
             html_content=html,
             text_content=text,
             from_name=email_cfg.get("from_name", ""),

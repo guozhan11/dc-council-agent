@@ -26,6 +26,7 @@ def summarize_updates(
     *,
     model: str = "gpt-4.1-mini",
     max_bullets: int = 8,
+    interests: str | None = None,
 ) -> Dict[str, Any]:
     """
     Returns a dict like:
@@ -67,6 +68,8 @@ def summarize_updates(
 
     sources_block = _build_sources_block(trimmed_items)
 
+    interests_line = f"Subscriber interests: {interests}" if interests else "Subscriber interests: (not specified)"
+
     prompt = f"""
 You are summarizing a weekly policy/news digest about DC Council.
 You MUST preserve traceability to sources.
@@ -75,7 +78,7 @@ You will be given N source items, numbered [1]..[N].
 Write a concise weekly summary with up to {max_bullets} bullets.
 The headline must be a short, specific title that captures the most important development of the week.
 Each bullet must be exactly two parts: a one-sentence summary, then an em dash (" — "), then 1-2 sentences of supporting detail.
-Prioritize items most relevant to DC Council subscribers.
+Prioritize items most relevant to the subscriber's interests. If none are relevant, summarize the most important items overall.
 
 Rules:
 - Every bullet MUST cite at least one source number in a "sources" list.
@@ -93,6 +96,8 @@ Return ONLY valid JSON in this exact schema:
     }}
   ]
 }}
+
+{interests_line}
 
 Here are the sources (for citation only):
 {sources_block}
