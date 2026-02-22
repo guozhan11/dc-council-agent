@@ -7,6 +7,7 @@
     <style>
       body { font-family: system-ui, -apple-system, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; }
       .msg { margin-top: 12px; white-space: pre-wrap; }
+      iframe { display: none; }
       button { padding: 12px 16px; font-size: 16px; cursor: pointer; }
     </style>
   </head>
@@ -15,6 +16,7 @@
     <p id="status">Loading…</p>
     <button id="btn" style="display:none;">Confirm Unsubscribe</button>
     <div id="msg" class="msg"></div>
+    <iframe id="hidden_iframe" name="hidden_iframe"></iframe>
 
     <script>
       const WEB_APP_URL = "https://script.google.com/macros/s/AKfycby2ZqprwlWgRr2mVNaVkkuuQWYbnozHJKeW7jLf8nheMQc8rGOdsEwDRxEwvC4PPRkU/exec"; //
@@ -24,6 +26,7 @@
       const statusEl = document.getElementById("status");
       const msgEl = document.getElementById("msg");
       const btnEl = document.getElementById("btn");
+      const iframeEl = document.getElementById("hidden_iframe");
 
       function setMsg(text) { msgEl.textContent = text; }
 
@@ -34,18 +37,17 @@
         btnEl.style.display = "inline-block";
       }
 
-      btnEl.addEventListener("click", async () => {
+      iframeEl.addEventListener("load", () => {
+        if (btnEl.disabled) {
+          setMsg("You are unsubscribed.");
+          statusEl.textContent = "Done.";
+        }
+      });
+
+      btnEl.addEventListener("click", () => {
         btnEl.disabled = true;
         setMsg("Unsubscribing...");
-        try {
-          const resp = await fetch(`${WEB_APP_URL}?path=unsubscribe&token=${encodeURIComponent(token)}`);
-          const text = await resp.text();
-          setMsg(text);
-          statusEl.textContent = "Done.";
-        } catch (err) {
-          setMsg("Network error: " + err);
-          btnEl.disabled = false;
-        }
+        iframeEl.src = `${WEB_APP_URL}?path=unsubscribe&token=${encodeURIComponent(token)}`;
       });
     </script>
   </body>
