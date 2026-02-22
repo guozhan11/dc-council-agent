@@ -19,14 +19,14 @@ Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 ```text
 .
-├── .github/                   # GitHub workflows / configs (optional)
-├── .env                        # Local environment variables (not committed)
-├── .venv/                      # Local virtual environment (optional)
+├── .github/                   # GitHub workflows / configs
+├── .env                       # Local environment variables (not committed)
+├── .venv/                     # Local virtual environment
 ├── config.yaml                # Main project configuration
-├── db.sqlite                  # Local SQLite database (generated)
+├── db.sqlite                  # Local SQLite database
 ├── requirements.txt           # Python dependencies
 ├── docs/                      # GitHub Pages static site (subscribe/unsubscribe pages)
 ├── src/                       # Main Python source code (digest + utilities)
-├── template/                  # Email templates (Jinja2 HTML)
+├── template/                  # Email templates
 ├── x-api/                     # Experiments / scripts using X API (optional)
 └── x-scraper/                 # Scraper experiments (optional)
