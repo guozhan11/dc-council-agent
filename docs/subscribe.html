@@ -55,16 +55,31 @@
         finishSubmit("Submitted ✅\n\nNow check the subscribers sheet: your email should appear.");
       });
 
-      formEl.addEventListener("submit", () => {
+      formEl.addEventListener("submit", (e) => {
+        e.preventDefault();
         setMsg("Submitting...");
         btnEl.disabled = true;
         isSubmitting = true;
 
-        // We can’t read the cross-origin response from Apps Script.
-        // Fall back to a timer if the iframe load event is blocked.
+        // Use fetch with no-cors so the UI can complete without waiting on iframe behavior.
+        const formData = new FormData(formEl);
+        const submitUrl = `${WEB_APP_URL}?path=subscribe`;
+
         fallbackTimer = window.setTimeout(() => {
           finishSubmit("Submitted ✅\n\nIf you don't see your email, try again or check the Apps Script logs.");
         }, 4000);
+
+        fetch(submitUrl, {
+          method: "POST",
+          mode: "no-cors",
+          body: formData,
+        })
+          .then(() => {
+            finishSubmit("Submitted ✅\n\nNow check the subscribers sheet: your email should appear.");
+          })
+          .catch(() => {
+            finishSubmit("Submission failed. Please try again or check the Apps Script logs.");
+          });
       });
     </script>
   </body>
