@@ -67,19 +67,41 @@ def extract_granicus_download_url(summary_html: str) -> str:
     return ""
 
 
-def fetch_feed(url: str):
+def fetch_feed(url: str, source: str):
+    headers = {"User-Agent": "dc-digest-bot/0.1"}
+    if source == "washington_times":
+        headers["User-Agent"] = (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        )
+
     resp = requests.get(
         url,
         timeout=20,
-        headers={"User-Agent": "dc-digest-bot/0.1"},
+        headers=headers,
     )
+
+    if source == "washington_times" and resp.status_code == 403:
+        # Retry once with a different UA to avoid basic blocks.
+        headers["User-Agent"] = (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/122.0.0.0 Safari/537.36"
+        )
+        resp = requests.get(
+            url,
+            timeout=20,
+            headers=headers,
+        )
+
     resp.raise_for_status()
     return feedparser.parse(resp.text)
 
 
 def parse_feed(feed_name: str, source: str, url: str):
     try:
-        parsed = fetch_feed(url)
+        parsed = fetch_feed(url, source)
     except Exception as e:
         print(f"Failed to fetch {feed_name} ({source}): {e}")
         return
