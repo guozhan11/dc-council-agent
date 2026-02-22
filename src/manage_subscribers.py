@@ -1,4 +1,5 @@
 import sys
+import os
 import secrets
 import yaml
 
@@ -52,8 +53,11 @@ def main() -> int:
     cmd = sys.argv[1].strip().lower()
     email = sys.argv[2].strip()
 
-    cfg = load_config("../config.yaml")
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    cfg = load_config(os.path.join(repo_root, "config.yaml"))
     db_path = cfg["storage"]["db_path"]
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(repo_root, db_path)
 
     if cmd == "add":
         add_subscriber(db_path, email)

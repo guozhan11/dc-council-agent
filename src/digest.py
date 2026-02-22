@@ -55,12 +55,15 @@ def get_active_subscribers_from_apps_script() -> list[dict]:
 
 
 def main() -> int:
-    config_path = "../config.yaml"
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    config_path = os.path.join(repo_root, "config.yaml")
     if len(sys.argv) > 1:
         config_path = sys.argv[1]
 
     cfg = load_config(config_path)
     db_path = cfg["storage"]["db_path"]
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(repo_root, db_path)
 
     conn = connect(db_path)
     init_db(conn)
@@ -69,6 +72,8 @@ def main() -> int:
     window_start_dt = now - timedelta(days=7)
     window_start = window_start_dt.isoformat()
     window_end = now.isoformat()
+    window_start_date = window_start_dt.date().isoformat()
+    window_end_date = now.date().isoformat()
 
     items = get_items_since(conn, window_start)
 
@@ -105,23 +110,26 @@ def main() -> int:
         ai_summary = summarize_updates(
             top_for_ai,
             model="gpt-4.1-mini",
-            max_bullets=8,
+            max_bullets=3,
         )
-    except Exception as e:
-        ai_summary = {
-            "headline": "Weekly updates",
-            "bullets": [],
-            "sources": [],
-            "error": str(e),
+        source_url_map = {
+            s.get("n"): s.get("url")
+            for s in ai_summary.get("sources", [])
+            if s.get("n") and s.get("url")
         }
+    except Exception as e:
+        print(f"AI summary error: {e}")
+        print("Aborting send: AI summary failed to generate.")
+        return 1
 
     # ---- Template setup (do this BEFORE render) ----
     # NOTE: set this to the actual folder name that contains weekly_email.html
-    env = Environment(loader=FileSystemLoader("../template"))
+    env = Environment(loader=FileSystemLoader(os.path.join(repo_root, "template")))
     template = env.get_template("weekly_email.html")
 
     email_cfg = cfg["email"]
-    subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
+    fallback_subject = f"{email_cfg['subject_prefix']} ({window_start_dt.date()}–{now.date()})"
+    subject = (ai_summary or {}).get("headline") or fallback_subject
 
     subscribers = get_active_subscribers_from_apps_script()
 
@@ -154,12 +162,13 @@ def main() -> int:
 
         html = template.render(
             subject=subject,
-            window_start=window_start,
-            window_end=window_end,
+            window_start=window_start_date,
+            window_end=window_end_date,
             highlights=highlights,
             sections=dict(sections),
             unsubscribe_url=unsubscribe_url,
             ai_summary=ai_summary,
+            source_url_map=source_url_map,
         )
         text = build_plain_text(subject, highlights, dict(sections), unsubscribe_url)
 

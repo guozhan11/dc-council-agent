@@ -31,7 +31,7 @@ def summarize_updates(
     Returns a dict like:
     {
       "headline": "...",
-      "bullets": [{"text": "...", "sources": [1,3]}],
+    "bullets": [{"text": "Lead clause — supporting detail", "sources": [1,3]}],
       "sources": [{"n": 1, "title": "...", "url": "...", "source": "..."}]
     }
     """
@@ -73,6 +73,9 @@ You MUST preserve traceability to sources.
 
 You will be given N source items, numbered [1]..[N].
 Write a concise weekly summary with up to {max_bullets} bullets.
+The headline must be a short, specific title that captures the most important development of the week.
+Each bullet must start with a short lead clause, followed by an em dash (" — ") and supporting detail.
+Prioritize items most relevant to DC Council subscribers.
 
 Rules:
 - Every bullet MUST cite at least one source number in a "sources" list.
@@ -113,14 +116,30 @@ Here are the items as JSON:
                 if c.type == "output_text":
                     output_text += c.text
 
-    try:
-        summary = json.loads(output_text)
-    except Exception as e:
-        raise RuntimeError(f"Model did not return valid JSON. Error: {e}\nRaw:\n{output_text}")
+    cleaned_text = output_text.strip()
+    if cleaned_text.startswith("```"):
+        lines = cleaned_text.splitlines()
+        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
+            cleaned_text = "\n".join(lines[1:-1]).strip()
 
-    # Attach the original sources so the template can render a Sources section.
+    try:
+        summary = json.loads(cleaned_text)
+    except Exception as e:
+        raise RuntimeError(
+            f"Model did not return valid JSON. Error: {e}\nRaw:\n{output_text}"
+        )
+
+    # Attach only cited sources so the template lists what was referenced.
+    used_sources = set()
+    for b in summary.get("bullets", []):
+        for s in b.get("sources", []):
+            if isinstance(s, int) and 1 <= s <= len(trimmed_items):
+                used_sources.add(s)
+
     sources = []
     for i, it in enumerate(trimmed_items, start=1):
+        if i not in used_sources:
+            continue
         sources.append(
             {
                 "n": i,

@@ -1,5 +1,6 @@
 import sys
 import re
+import os
 import yaml
 import feedparser
 import requests
@@ -117,12 +118,15 @@ def parse_feed(feed_name: str, source: str, url: str):
 
 
 def main() -> int:
-    config_path = "../config.yaml"
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    config_path = os.path.join(repo_root, "config.yaml")
     if len(sys.argv) > 1:
         config_path = sys.argv[1]
 
     cfg = load_config(config_path)
     db_path = cfg["storage"]["db_path"]
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(repo_root, db_path)
 
     conn = connect(db_path)
     init_db(conn)

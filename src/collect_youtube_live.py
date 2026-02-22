@@ -1,12 +1,16 @@
 import sys
+import os
 import yaml
 import requests
+from dotenv import load_dotenv
 
 from db import connect, init_db, insert_item
 from utils import make_content_hash, to_iso_datetime
 
 
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
+
+load_dotenv()
 
 
 def load_config(path: str) -> dict:
@@ -75,14 +79,15 @@ def youtube_item_to_db_item(source: str, it: dict) -> dict:
 
 
 def main() -> int:
-    import os
-
-    config_path = "../config.yaml"
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    config_path = os.path.join(repo_root, "config.yaml")
     if len(sys.argv) > 1:
         config_path = sys.argv[1]
 
     cfg = load_config(config_path)
     db_path = cfg["storage"]["db_path"]
+    if not os.path.isabs(db_path):
+        db_path = os.path.join(repo_root, db_path)
 
     api_key = os.environ.get("YOUTUBE_API_KEY", "").strip()
     if not api_key:

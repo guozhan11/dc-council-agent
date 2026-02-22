@@ -1,6 +1,8 @@
 # DC Council Agent
 
-A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. Subscribers are managed via a Google Apps Script + Google Sheet (subscribe/unsubscribe + “active subscribers” API). The email can optionally include an OpenAI-generated summary while still listing sources/links.
+A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. The newsletter content is generated using OpenAI API with daily collected updates as sources. Links to mentioned events are included for reference and verification.
+
+Subscribe [here](https://guozhan11.github.io/WIP-dc-council-agent/)!
 
 ---
 

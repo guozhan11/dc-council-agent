@@ -1,96 +1,75 @@
 <!doctype html>
 <html>
-  <body style="font-family: Arial, sans-serif; line-height: 1.4;">
-    <h2>{{ subject }}</h2>
-    <p>
-      Coverage window: <strong>{{ window_start }}</strong> to <strong>{{ window_end }}</strong> (UTC)
-    </p>
-
-    {# -------------------- AI SUMMARY SECTION -------------------- #}
-    {% if ai_summary and ai_summary.bullets and ai_summary.bullets|length > 0 %}
-      <hr />
-      <h3 style="margin-bottom: 6px;">AI summary</h3>
-
-      {% if ai_summary.headline %}
-        <p style="margin-top: 0; color: #333;"><strong>{{ ai_summary.headline }}</strong></p>
+  <head>
+    <meta charset="utf-8" />
+  </head>
+  <body style="font-family: Georgia, 'Times New Roman', serif; line-height: 1.55; color: #1f2a37;">
+    <div style="max-width: 680px; margin: 0 auto; padding: 12px 8px;">
+      {% if ai_summary and ai_summary.headline %}
+        <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 26px; line-height: 1.25; margin: 0 0 10px;">
+          {{ ai_summary.headline }}
+        </h1>
+      {% else %}
+        <h1 style="font-family: Georgia, 'Times New Roman', serif; font-size: 26px; line-height: 1.25; margin: 0 0 10px;">
+          {{ subject }}
+        </h1>
       {% endif %}
+      <p style="margin: 0 0 14px; color: #52606d;">
+        Coverage window: <strong>{{ window_start }}</strong> to <strong>{{ window_end }}</strong> (UTC)
+      </p>
 
-      <ul>
-        {% for b in ai_summary.bullets %}
-          <li style="margin-bottom: 8px;">
-            {{ b.text }}
-            {% if b.sources and b.sources|length > 0 %}
-              <span style="color: #666; font-size: 12px;">
-                {% for s in b.sources %}
-                  [{{ s }}]{% if not loop.last %} {% endif %}
-                {% endfor %}
-              </span>
-            {% endif %}
-          </li>
-        {% endfor %}
-      </ul>
+    {# -------------------- AI SUMMARY ONLY -------------------- #}
+      {% if ai_summary and ai_summary.bullets and ai_summary.bullets|length > 0 %}
+        <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 18px 0;" />
+        <h3 style="margin: 0 0 10px; font-size: 16px; color: #111827; letter-spacing: 0.2px;">Weekly summary</h3>
 
-      {% if ai_summary.sources and ai_summary.sources|length > 0 %}
-        <details style="margin-top: 8px;">
-          <summary style="cursor: pointer; color: #444;">Sources (click to expand)</summary>
-          <ol style="color: #444; font-size: 13px;">
+        <ol style="padding-left: 18px; margin: 0 0 10px;">
+          {% for b in ai_summary.bullets %}
+            {% set parts = b.text.split(" — ", 1) %}
+            <li style="margin-bottom: 10px;">
+              {% if parts|length > 1 %}
+                <strong>{{ parts[0] }}</strong> — {{ parts[1] }}
+              {% else %}
+                <strong>{{ b.text }}</strong>
+              {% endif %}
+              {% if b.sources and b.sources|length > 0 %}
+                <span style="color: #6b7280; font-size: 12px;">
+                  {% for s in b.sources %}
+                    {% set src_url = source_url_map.get(s) %}
+                    {% if src_url %}
+                      <a href="{{ src_url }}" style="color: #6b7280; text-decoration: none;">[{{ s }}]</a>{% if not loop.last %} {% endif %}
+                    {% else %}
+                      [{{ s }}]{% if not loop.last %} {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                </span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+
+        {% if ai_summary.sources and ai_summary.sources|length > 0 %}
+          <p style="margin: 12px 0 6px; color: #111827; font-size: 13px; font-weight: 600;">Sources</p>
+          <ol style="color: #374151; font-size: 13px; padding-left: 18px; margin: 0 0 8px;">
             {% for s in ai_summary.sources %}
               <li style="margin: 6px 0;">
                 {% if s.url %}
-                  <a href="{{ s.url }}">{{ s.title or ("Source " ~ s.n) }}</a>
+                  <a href="{{ s.url }}" style="color: #1f4eb4; text-decoration: none;">{{ s.title or ("Source " ~ s.n) }}</a>
                 {% else %}
                   {{ s.title or ("Source " ~ s.n) }}
-                {% endif %}
-                {% if s.source %}
-                  <span style="color: #777;"> — {{ s.source }}</span>
                 {% endif %}
               </li>
             {% endfor %}
           </ol>
-        </details>
+        {% endif %}
       {% endif %}
 
-      {% if ai_summary.error %}
-        <p style="color: #b00; font-size: 12px;">
-          (AI summary fallback: {{ ai_summary.error }})
-        </p>
-      {% endif %}
-    {% endif %}
-    
-    {% if highlights %}
-      <hr />
-      <h3>Top highlights</h3>
-      <ul>
-        {% for it in highlights %}
-          <li>
-            <strong>{{ it.title }}</strong>
-            — <a href="{{ it.url }}">Link</a>
-            <span style="color: #666;">(source: {{ it.source }})</span>
-          </li>
-        {% endfor %}
-      </ul>
-    {% endif %}
-
-    {% for section_name, items in sections.items() %}
-      {% if items %}
-        <h3>{{ section_name }}</h3>
-        <ul>
-          {% for it in items %}
-            <li>
-              <strong>{{ it.title }}</strong>
-              — <a href="{{ it.url }}">Link</a>
-              <span style="color: #666;">(source: {{ it.source }})</span>
-            </li>
-          {% endfor %}
-        </ul>
-      {% endif %}
-    {% endfor %}
-
-    <hr />
-    <p style="color: #666; font-size: 12px;">
-      You received this because you subscribed to DC Council updates.
-      <br />
-      <a href="{{ unsubscribe_url }}">Unsubscribe</a>
-    </p>
+      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 18px 0 12px;" />
+      <p style="color: #6b7280; font-size: 12px; margin: 0;">
+        You received this because you subscribed to DC Council updates.
+        <br />
+        <a href="{{ unsubscribe_url }}" style="color: #6b7280;">Unsubscribe</a>
+      </p>
+    </div>
   </body>
 </html>
