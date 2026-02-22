@@ -32,7 +32,8 @@ def summarize_updates(
     Returns a dict like:
     {
       "headline": "...",
-    "bullets": [{"text": "Lead clause — supporting detail", "sources": [1,3]}],
+            "interest_notice": "..." | null,
+            "bullets": [{"text": "Lead clause — supporting detail", "sources": [1,3]}],
       "sources": [{"n": 1, "title": "...", "url": "...", "source": "..."}]
     }
     """
@@ -89,6 +90,7 @@ Return ONLY valid JSON in this exact schema:
 
 {{
   "headline": "string",
+    "interest_notice": "string or null",
   "bullets": [
     {{
       "text": "string",
@@ -96,6 +98,10 @@ Return ONLY valid JSON in this exact schema:
     }}
   ]
 }}
+
+If no items are relevant to the subscriber's interests, set "interest_notice" to:
+"No updates this week for your interests: {interests}. Showing general updates instead."
+Use the interests text exactly as provided. Otherwise set "interest_notice" to null.
 
 {interests_line}
 

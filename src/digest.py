@@ -142,6 +142,16 @@ def main() -> int:
             print("Aborting send: AI summary failed to generate.")
             return 1
 
+        if not interests:
+            ai_summary["interest_notice"] = (
+                "This email covers highlights across all areas. Update your preferences for customization anytime "
+                "https://guozhan11.github.io/dc-council-agent/subscribe.html"
+            )
+            ai_summary["interest_notice_html"] = (
+                "This email covers highlights across all areas. Update your preferences for customization anytime "
+                "<a href=\"https://guozhan11.github.io/dc-council-agent/subscribe.html\">here</a>."
+            )
+
         source_url_map = {
             s.get("n"): s.get("url")
             for s in ai_summary.get("sources", [])

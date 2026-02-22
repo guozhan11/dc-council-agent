@@ -23,6 +23,16 @@
         <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 18px 0;" />
         <h3 style="margin: 0 0 10px; font-size: 16px; color: #111827; letter-spacing: 0.2px;">Weekly summary</h3>
 
+        {% if ai_summary.interest_notice_html %}
+          <p style="margin: 0 0 10px; color: #6b7280; font-size: 13px;">
+            {{ ai_summary.interest_notice_html | safe }}
+          </p>
+        {% elif ai_summary.interest_notice %}
+          <p style="margin: 0 0 10px; color: #6b7280; font-size: 13px;">
+            {{ ai_summary.interest_notice }}
+          </p>
+        {% endif %}
+
         <ol style="padding-left: 18px; margin: 0 0 10px;">
           {% for b in ai_summary.bullets %}
             {% set parts = b.text.split(" — ", 1) %}
