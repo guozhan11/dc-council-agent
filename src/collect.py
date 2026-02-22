@@ -4,6 +4,7 @@ import os
 import yaml
 import feedparser
 import requests
+import time
 
 from db import connect, init_db, insert_item
 from utils import make_content_hash, to_iso_datetime, strip_html
@@ -66,8 +67,22 @@ def extract_granicus_download_url(summary_html: str) -> str:
     return ""
 
 
+def fetch_feed(url: str):
+    resp = requests.get(
+        url,
+        timeout=20,
+        headers={"User-Agent": "dc-digest-bot/0.1"},
+    )
+    resp.raise_for_status()
+    return feedparser.parse(resp.text)
+
+
 def parse_feed(feed_name: str, source: str, url: str):
-    parsed = feedparser.parse(url)
+    try:
+        parsed = fetch_feed(url)
+    except Exception as e:
+        print(f"Failed to fetch {feed_name} ({source}): {e}")
+        return
     if parsed.bozo:
         # bozo means parsing had issues; still might have entries
         pass
@@ -146,6 +161,7 @@ def main() -> int:
         name = f["name"]
         source = f["source"]
         url = f["url"]
+        start = time.monotonic()
         print(f"Fetching: {name} ({source})")
 
         for item in parse_feed(name, source, url):
@@ -156,6 +172,9 @@ def main() -> int:
             inserted = insert_item(conn, item)
             if inserted:
                 total_new += 1
+
+        elapsed = time.monotonic() - start
+        print(f"Done: {name} in {elapsed:.1f}s")
 
     print(f"Done. New items saved: {total_new}")
     return 0
