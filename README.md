@@ -1,6 +1,6 @@
 # DC Council Agent
 
-A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. The newsletter content is generated using OpenAI API with daily collected updates as sources. Links to mentioned events are included for reference and verification.
+A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. The newsletter includes a three-bullet AI summary with clickable sources and supports per-subscriber customization based on selected topics and free-text interests.
 
 Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
@@ -10,8 +10,8 @@ Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 1. **Collectors** gather items from different sources (RSS, YouTube, etc.).
 2. **SQLite** stores normalized items (deduped).
-3. **Digest sender** pulls the last 7 days of items, ranks them, optionally summarizes via OpenAI, renders an HTML email, and sends via Gmail SMTP.
-4. **Subscriber service** (Google Apps Script) stores subscriber emails + unsubscribe tokens in a Google Sheet and exposes endpoints used by the Python sender.
+3. **Digest sender** pulls the last 7 days of items, ranks them, summarizes via OpenAI into a concise three-bullet brief, renders a clean HTML newsletter, and sends via Gmail SMTP.
+4. **Subscriber service** (Google Apps Script) stores subscriber emails, unsubscribe tokens, and interest preferences in a Google Sheet and exposes endpoints used by the Python sender.
 
 ---
 
@@ -20,6 +20,8 @@ Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 ```text
 .
 ├── .github/                   # GitHub workflows / configs (optional)
+├── .env                        # Local environment variables (not committed)
+├── .venv/                      # Local virtual environment (optional)
 ├── config.yaml                # Main project configuration
 ├── db.sqlite                  # Local SQLite database (generated)
 ├── requirements.txt           # Python dependencies
