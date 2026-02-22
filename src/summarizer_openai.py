@@ -74,7 +74,7 @@ You MUST preserve traceability to sources.
 You will be given N source items, numbered [1]..[N].
 Write a concise weekly summary with up to {max_bullets} bullets.
 The headline must be a short, specific title that captures the most important development of the week.
-Each bullet must start with a short lead clause, followed by an em dash (" — ") and supporting detail.
+Each bullet must be exactly two parts: a one-sentence summary, then an em dash (" — "), then 1-2 sentences of supporting detail.
 Prioritize items most relevant to DC Council subscribers.
 
 Rules:

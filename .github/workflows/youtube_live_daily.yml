@@ -5,6 +5,9 @@ on:
     - cron: "10 14 * * *"  # daily
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   collect_youtube:
     runs-on: ubuntu-latest
