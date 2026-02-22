@@ -18,6 +18,34 @@ feeds:
     source: "google_alerts"
     url: "https://www.google.com/alerts/feeds/00411844104616880365/12946569030537193381"
 
+  - name: "DC Bureau (States Newsroom)"
+    source: "dc_bureau"
+    url: "https://www.newsfromthestates.com/api/v2/article/category?article_category=565"
+
+  - name: "Washington Post Politics"
+    source: "washington_post"
+    url: "https://www.washingtonpost.com/arcio/rss/category/politics/?itid=lk_inline_manual_2"
+
+  - name: "Washington Post Local"
+    source: "washington_post"
+    url: "https://feeds.washingtonpost.com/rss/local?itid=lk_inline_manual_9"
+
+  - name: "Washington Times Headlines"
+    source: "washington_times"
+    url: "https://www.washingtontimes.com/rss/headlines/news/"
+
+  - name: "51st News (Latest)"
+    source: "fifty_first"
+    url: "https://51st.news/latest/rss"
+
+  - name: "Popville"
+    source: "popville"
+    url: "http://www.popville.com/feed/"
+
+  - name: "Greater Greater Washington"
+    source: "ggwash"
+    url: "https://ggwash.org/rss"
+
 youtube_api:
   channel_id: "UCsRAGNZrk_9pfss7oyHs9GA"
   event_types: ["live", "upcoming"]
@@ -27,9 +55,15 @@ ranking:
   source_weight:
     granicus_rss: 3
     youtube: 2
-    youtube_live: 3
-    youtube_upcoming: 3
-    google_alerts: 1
+    youtube_live: 2
+    youtube_upcoming: 2
+    google_alerts: 3
+    dc_bureau: 1
+    washington_post: 1
+    washington_times: 1
+    fifty_first: 1
+    popville: 1
+    ggwash: 1
 
 highlights:
   max_items: 8
@@ -40,6 +74,21 @@ highlights:
     - "committee"
     - "vote"
     - "markup"
+
+filters:
+  dc_council_keywords:
+    - "dc council"
+    - "councilmember"
+    - "chairman"
+    - "committee"
+    - "hearing"
+    - "oversight"
+    - "legislation"
+    - "bill"
+    - "district of columbia"
+    - "d.c."
+    - "mendelson"
+    - "council of the district"
 
 email:
   provider: "gmail_smtp"

@@ -15,6 +15,22 @@ Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 ---
 
+## Sources
+
+The newsletter is generated from a mix of official and local news sources. Current feeds include:
+
+- DC Council official Granicus hearings feed
+- DC Council YouTube channel feed
+- Google Alerts for major news mentions
+- States Newsroom (DC Bureau)
+- Washington Post (Politics, Local)
+- Washington Times (Headlines)
+- 51st.news (Latest)
+- Popville
+- Greater Greater Washington
+
+---
+
 ## Folder structure
 
 ```text

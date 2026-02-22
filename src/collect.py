@@ -117,6 +117,13 @@ def parse_feed(feed_name: str, source: str, url: str):
         }
 
 
+def matches_keywords(text: str, keywords: list[str]) -> bool:
+    if not keywords:
+        return True
+    haystack = text.lower()
+    return any(k.lower() in haystack for k in keywords)
+
+
 def main() -> int:
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     config_path = os.path.join(repo_root, "config.yaml")
@@ -131,6 +138,9 @@ def main() -> int:
     conn = connect(db_path)
     init_db(conn)
 
+    keywords = cfg.get("filters", {}).get("dc_council_keywords", [])
+    official_sources = {"granicus_rss", "council_rss", "youtube"}
+
     total_new = 0
     for f in cfg.get("feeds", []):
         name = f["name"]
@@ -139,6 +149,10 @@ def main() -> int:
         print(f"Fetching: {name} ({source})")
 
         for item in parse_feed(name, source, url):
+            if source not in official_sources and keywords:
+                combined = f"{item.get('title', '')} {item.get('summary', '')}"
+                if not matches_keywords(combined, keywords):
+                    continue
             inserted = insert_item(conn, item)
             if inserted:
                 total_new += 1
