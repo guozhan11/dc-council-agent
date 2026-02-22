@@ -11,6 +11,7 @@
       .topics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 10px 0 6px; }
       .topic { display: flex; align-items: center; gap: 8px; }
       .hint { color: #555; font-size: 13px; margin-top: 4px; }
+      .section-gap { margin-top: 12px; }
       .msg { margin-top: 12px; white-space: pre-wrap; }
       iframe { display: none; }
     </style>
@@ -34,10 +35,10 @@
       </div>
       <input id="topicsInput" name="topics" type="hidden" />
 
-      <label for="interests">Anything else you care about?</label>
+      <label for="interests" class="section-gap">Anything else you care about?</label>
       <textarea id="interests" name="interests" rows="3" placeholder="e.g., committee hearings, Pepco oversight, neighborhood projects"></textarea>
       <div class="hint">We use this to tailor the weekly summary for you.</div>
-      <button id="btn" type="submit">Subscribe</button>
+      <button id="btn" type="submit" class="section-gap">Subscribe</button>
     </form>
 
     <div id="msg" class="msg"></div>
