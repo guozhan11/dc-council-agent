@@ -2,6 +2,7 @@ import sys
 import os
 import yaml
 import requests
+from urllib.parse import urlparse
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
 from jinja2 import Environment, FileSystemLoader
@@ -41,13 +42,23 @@ def build_plain_text(subject: str, highlights: list, sections: dict, unsubscribe
 
 
 def get_active_subscribers_from_apps_script() -> list[dict]:
-    base = os.environ.get("SUBSCRIBERS_API_URL", "").rstrip("/")
-    key = os.environ.get("SUBSCRIBERS_API_KEY", "")
+    def _clean_secret(value: str) -> str:
+        return str(value or "").strip().strip('"').strip("'")
+
+    base = _clean_secret(os.environ.get("SUBSCRIBERS_API_URL", "")).rstrip("/")
+    key = _clean_secret(os.environ.get("SUBSCRIBERS_API_KEY", ""))
+
     if not base or not key:
         raise RuntimeError("Missing SUBSCRIBERS_API_URL or SUBSCRIBERS_API_KEY environment variables.")
 
-    url = f"{base}?path=active_subscribers&key={key}"
-    resp = requests.get(url, timeout=20)
+    parsed = urlparse(base)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(
+            "SUBSCRIBERS_API_URL must be a full http(s) URL (for example: "
+            "https://script.google.com/macros/s/.../exec). Check the GitHub Secret value and remove wrapping quotes."
+        )
+
+    resp = requests.get(base, params={"path": "active_subscribers", "key": key}, timeout=20)
     resp.raise_for_status()
 
     # If Apps Script returns HTML (not JSON), this will fail:
