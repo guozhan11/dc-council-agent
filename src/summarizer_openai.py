@@ -221,20 +221,29 @@ Here are the items as JSON:
 
     summary["bullets"] = _dedupe_bullets(summary.get("bullets", []))[:max_bullets]
 
-    # Attach only cited sources so the template lists what was referenced.
-    used_sources = set()
+    ordered_source_ids: List[int] = []
     for b in summary.get("bullets", []):
+        normalized: List[int] = []
         for s in b.get("sources", []):
-            if isinstance(s, int) and 1 <= s <= len(trimmed_items):
-                used_sources.add(s)
+            if isinstance(s, int) and 1 <= s <= len(trimmed_items) and s not in normalized:
+                normalized.append(s)
+            if s not in ordered_source_ids:
+                ordered_source_ids.append(s)
+        b["sources"] = normalized
+
+    renumber_map = {old: idx + 1 for idx, old in enumerate(ordered_source_ids)}
+
+    for b in summary.get("bullets", []):
+        b["sources"] = [renumber_map[s] for s in b.get("sources", []) if s in renumber_map]
 
     sources = []
-    for i, it in enumerate(trimmed_items, start=1):
-        if i not in used_sources:
+    for old_id in ordered_source_ids:
+        if not isinstance(old_id, int) or not (1 <= old_id <= len(trimmed_items)):
             continue
+        it = trimmed_items[old_id - 1]
         sources.append(
             {
-                "n": i,
+                "n": renumber_map.get(old_id, old_id),
                 "title": it.get("title") or "",
                 "url": it.get("url") or "",
                 "source": it.get("source") or "",
