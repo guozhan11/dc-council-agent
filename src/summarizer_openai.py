@@ -22,6 +22,47 @@ def _build_sources_block(items: List[Dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _tokenize(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", (text or "").lower()))
+
+
+def _lead(text: str) -> str:
+    return (text or "").split(" — ", 1)[0].strip()
+
+
+def _is_near_duplicate(candidate: Dict[str, Any], kept: Dict[str, Any]) -> bool:
+    cand_lead = _lead(str(candidate.get("text") or ""))
+    kept_lead = _lead(str(kept.get("text") or ""))
+
+    cand_tokens = _tokenize(cand_lead)
+    kept_tokens = _tokenize(kept_lead)
+    if not cand_tokens or not kept_tokens:
+        return False
+
+    intersection = len(cand_tokens & kept_tokens)
+    union = len(cand_tokens | kept_tokens)
+    jaccard = (intersection / union) if union else 0.0
+
+    cand_sources = {s for s in candidate.get("sources", []) if isinstance(s, int)}
+    kept_sources = {s for s in kept.get("sources", []) if isinstance(s, int)}
+    source_overlap = 0.0
+    if cand_sources and kept_sources:
+        source_overlap = len(cand_sources & kept_sources) / min(len(cand_sources), len(kept_sources))
+
+    return jaccard >= 0.62 or (jaccard >= 0.45 and source_overlap >= 0.8)
+
+
+def _dedupe_bullets(bullets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    deduped: List[Dict[str, Any]] = []
+    for bullet in bullets:
+        if not bullet.get("text"):
+            continue
+        if any(_is_near_duplicate(bullet, existing) for existing in deduped):
+            continue
+        deduped.append(bullet)
+    return deduped
+
+
 def summarize_updates(
     items: List[Dict[str, Any]],
     *,
@@ -86,8 +127,8 @@ Rules:
 - Every bullet MUST cite at least one source number in a "sources" list.
 - Do NOT invent facts not supported by the items.
 - Keep bullets readable for a newsletter.
-- In each bullet "text", do NOT include source lists, source numbers, or parentheticals like "(Sources: ...)".
-- Put source attribution ONLY in the "sources" array for each bullet.
+- Bullets must be non-overlapping: each bullet should cover a different development, not rephrase the same event.
+- If there are fewer distinct developments, return fewer bullets (1-2 bullets is acceptable). Do not pad with repetitive bullets.
 
 Return ONLY valid JSON in this exact schema:
 
@@ -147,6 +188,8 @@ Here are the items as JSON:
         text = str(bullet.get("text") or "")
         text = re.sub(r"\s*\((?:Sources?|Source)\s*:[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
         bullet["text"] = re.sub(r"\s+", " ", text).strip()
+
+    summary["bullets"] = _dedupe_bullets(summary.get("bullets", []))[:max_bullets]
 
     # Attach only cited sources so the template lists what was referenced.
     used_sources = set()
