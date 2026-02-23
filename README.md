@@ -31,10 +31,6 @@ The newsletter is generated from a mix of official and local news sources. Curre
 
 ---
 
-## Folder structure
-
----
-
 ## Required environment variables / GitHub Secrets
 
 The weekly digest job needs these values (locally via `.env`, or in GitHub via **Settings → Secrets and variables → Actions**):
@@ -49,6 +45,10 @@ Optional:
 
 - `TEST_TO_EMAIL`: Test recipient address
 - `TEST_ONLY_MODE`: Set to `true`/`1` to send only to `TEST_TO_EMAIL`
+
+---
+
+## Folder structure
 
 ```text
 .
