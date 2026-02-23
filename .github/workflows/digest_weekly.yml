@@ -22,6 +22,11 @@ jobs:
 
       - name: Send digest
         env:
-          SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+          SUBSCRIBERS_API_URL: ${{ secrets.SUBSCRIBERS_API_URL }}
+          SUBSCRIBERS_API_KEY: ${{ secrets.SUBSCRIBERS_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GMAIL_SMTP_USERNAME: ${{ secrets.GMAIL_SMTP_USERNAME }}
+          GMAIL_SMTP_APP_PASSWORD: ${{ secrets.GMAIL_SMTP_APP_PASSWORD }}
+          TEST_TO_EMAIL: ${{ secrets.TEST_TO_EMAIL }}
         run: |
           python src/digest.py

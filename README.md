@@ -33,6 +33,22 @@ The newsletter is generated from a mix of official and local news sources. Curre
 
 ## Folder structure
 
+---
+
+## Required environment variables / GitHub Secrets
+
+The weekly digest job needs these values (locally via `.env`, or in GitHub via **Settings → Secrets and variables → Actions**):
+
+- `SUBSCRIBERS_API_URL`: Your Google Apps Script `/exec` deployment URL (used for `?path=active_subscribers`)
+- `SUBSCRIBERS_API_KEY`: Shared key that protects the `active_subscribers` endpoint
+- `OPENAI_API_KEY`: Used to generate the 3-bullet AI summary
+- `GMAIL_SMTP_USERNAME`: Gmail address used to send the digest
+- `GMAIL_SMTP_APP_PASSWORD`: Gmail App Password (requires 2FA enabled)
+
+Optional:
+
+- `TEST_TO_EMAIL`: If set, the digest sends to only this address (useful for testing)
+
 ```text
 .
 ├── .github/                   # GitHub workflows / configs
