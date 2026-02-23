@@ -217,6 +217,8 @@ Here are the items as JSON:
         bullet["sources"] = merged_sources
 
         text = re.sub(r"\s*\((?:Sources?|Source)\s*:[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\bSources?\s*:?\s*\[[^\]]*\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*\[[0-9,\s]+\]", "", text)
         bullet["text"] = re.sub(r"\s+", " ", text).strip()
 
     summary["bullets"] = _dedupe_bullets(summary.get("bullets", []))[:max_bullets]
