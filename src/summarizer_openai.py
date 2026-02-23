@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import Any, Dict, List
 
 from openai import OpenAI
@@ -85,6 +86,8 @@ Rules:
 - Every bullet MUST cite at least one source number in a "sources" list.
 - Do NOT invent facts not supported by the items.
 - Keep bullets readable for a newsletter.
+- In each bullet "text", do NOT include source lists, source numbers, or parentheticals like "(Sources: ...)".
+- Put source attribution ONLY in the "sources" array for each bullet.
 
 Return ONLY valid JSON in this exact schema:
 
@@ -139,6 +142,11 @@ Here are the items as JSON:
         raise RuntimeError(
             f"Model did not return valid JSON. Error: {e}\nRaw:\n{output_text}"
         )
+
+    for bullet in summary.get("bullets", []):
+        text = str(bullet.get("text") or "")
+        text = re.sub(r"\s*\((?:Sources?|Source)\s*:[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
+        bullet["text"] = re.sub(r"\s+", " ", text).strip()
 
     # Attach only cited sources so the template lists what was referenced.
     used_sources = set()
