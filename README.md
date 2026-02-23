@@ -47,7 +47,8 @@ The weekly digest job needs these values (locally via `.env`, or in GitHub via *
 
 Optional:
 
-- `TEST_TO_EMAIL`: If set, the digest sends to only this address (useful for testing)
+- `TEST_TO_EMAIL`: Test recipient address
+- `TEST_ONLY_MODE`: Set to `true`/`1` to send only to `TEST_TO_EMAIL`
 
 ```text
 .

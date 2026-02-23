@@ -126,8 +126,12 @@ def main() -> int:
     subscribers = get_active_subscribers_from_apps_script()
 
     test_to = os.environ.get("TEST_TO_EMAIL", "").strip()
-    if test_to:
+    test_only = os.environ.get("TEST_ONLY_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+    if test_to and test_only:
+        print(f"TEST_ONLY_MODE enabled: sending only to {test_to}")
         subscribers = [{"email": test_to, "unsubscribe_token": "TESTTOKEN"}]
+    elif test_to and not test_only:
+        print("TEST_TO_EMAIL is set, but TEST_ONLY_MODE is not enabled; sending to all active subscribers.")
     if not subscribers:
         print("No active subscribers. Exiting.")
         return 0
