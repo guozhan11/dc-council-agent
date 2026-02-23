@@ -63,6 +63,24 @@ def _dedupe_bullets(bullets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return deduped
 
 
+def _parse_source_numbers(value: Any, max_n: int) -> List[int]:
+    nums: List[int] = []
+    if isinstance(value, list):
+        for it in value:
+            try:
+                n = int(it)
+            except Exception:
+                continue
+            if 1 <= n <= max_n and n not in nums:
+                nums.append(n)
+    elif isinstance(value, str):
+        for match in re.findall(r"\d+", value):
+            n = int(match)
+            if 1 <= n <= max_n and n not in nums:
+                nums.append(n)
+    return nums
+
+
 def summarize_updates(
     items: List[Dict[str, Any]],
     *,
@@ -186,6 +204,18 @@ Here are the items as JSON:
 
     for bullet in summary.get("bullets", []):
         text = str(bullet.get("text") or "")
+
+        structured_sources = _parse_source_numbers(bullet.get("sources"), len(trimmed_items))
+        inline_tail_match = re.search(r"\((?:Sources?|Source)\s*:\s*([^)]*)\)\s*$", text, flags=re.IGNORECASE)
+        inline_tail_sources = _parse_source_numbers(inline_tail_match.group(1), len(trimmed_items)) if inline_tail_match else []
+        inline_bracket_sources = _parse_source_numbers(" ".join(re.findall(r"\[(\d+)\]", text)), len(trimmed_items))
+
+        merged_sources: List[int] = []
+        for n in structured_sources + inline_tail_sources + inline_bracket_sources:
+            if n not in merged_sources:
+                merged_sources.append(n)
+        bullet["sources"] = merged_sources
+
         text = re.sub(r"\s*\((?:Sources?|Source)\s*:[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
         bullet["text"] = re.sub(r"\s+", " ", text).strip()
 
