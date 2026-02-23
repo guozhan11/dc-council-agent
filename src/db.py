@@ -97,6 +97,20 @@ def get_items_since(conn: sqlite3.Connection, iso_datetime: str) -> List[Dict[st
     return [dict(r) for r in rows]
 
 
+def get_existing_hashes(conn: sqlite3.Connection, source: str) -> set[str]:
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT content_hash
+        FROM items
+        WHERE source = ?
+        """,
+        (source,),
+    )
+    rows = cur.fetchall()
+    return {r[0] for r in rows if r and r[0]}
+
+
 def get_active_subscribers(conn: sqlite3.Connection) -> List[Dict[str, Any]]:
     cur = conn.cursor()
     cur.execute(

@@ -107,7 +107,7 @@ def main() -> int:
     sections = defaultdict(list)
     for it in items_sorted:
         src = it.get("source", "other")
-        if src in ["granicus_rss", "council_rss"]:
+        if src in ["granicus_rss", "granicus_captions", "council_rss"]:
             sections["Hearings & meetings (official)"].append(it)
         elif src == "youtube":
             sections["Videos & livestream replays"].append(it)

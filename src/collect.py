@@ -5,8 +5,10 @@ import yaml
 import feedparser
 import requests
 import time
+from urllib.parse import urljoin, urlparse, parse_qs
+from bs4 import BeautifulSoup
 
-from db import connect, init_db, insert_item
+from db import connect, init_db, insert_item, get_existing_hashes
 from utils import make_content_hash, to_iso_datetime, strip_html
 
 
@@ -154,6 +156,152 @@ def parse_feed(feed_name: str, source: str, url: str):
         }
 
 
+def _find_table_with_headers(soup: BeautifulSoup, required_headers: list[str]):
+    for table in soup.find_all("table"):
+        headers = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
+        if all(h in headers for h in required_headers):
+            return table, headers
+    return None, []
+
+
+def _extract_caption_link(row, page_url: str, headers: list[str]):
+    for a in row.find_all("a"):
+        if a.get_text(" ", strip=True).lower() == "captions" and a.get("href"):
+            return urljoin(page_url, a.get("href").strip())
+
+    try:
+        index = {h: i for i, h in enumerate(headers)}
+        if "captions" not in index:
+            return None
+        cells = row.find_all("td")
+        if not cells or len(cells) <= index["captions"]:
+            return None
+        captions_cell = cells[index["captions"]]
+        caption_link = captions_cell.find("a") if captions_cell else None
+        if caption_link and caption_link.get("href"):
+            return urljoin(page_url, caption_link.get("href").strip())
+    except Exception:
+        return None
+
+    return None
+
+
+def _looks_like_caption_text(text: str) -> bool:
+    if not text:
+        return False
+    head = text[:400]
+    if "WEBVTT" in head:
+        return True
+    if re.search(r"\d{2}:\d{2}:\d{2}[\.,]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}", head):
+        return True
+    return False
+
+
+def _clean_caption_text(raw_text: str) -> str:
+    lines = []
+    for line in raw_text.splitlines():
+        t = line.strip()
+        if not t:
+            continue
+        if t.upper() == "WEBVTT":
+            continue
+        if re.match(r"^\d+$", t):
+            continue
+        if re.match(r"^\d{2}:\d{2}:\d{2}[\.,]\d{3}\s+-->\s+\d{2}:\d{2}:\d{2}", t):
+            continue
+        if re.match(r"^\d{2}:\d{2}:\d{2}\s+-->\s+\d{2}:\d{2}:\d{2}", t):
+            continue
+        lines.append(t)
+    return " ".join(lines)
+
+
+def _fetch_caption_text(caption_url: str) -> str:
+    try:
+        resp = requests.get(caption_url, timeout=20, headers={"User-Agent": "dc-digest-bot/0.1"})
+        resp.raise_for_status()
+    except Exception:
+        return ""
+
+    content_type = (resp.headers.get("Content-Type") or "").lower()
+    if "video" in content_type or "audio" in content_type:
+        return ""
+
+    raw_text = resp.text or ""
+
+    if "text/html" in content_type or "<html" in raw_text.lower():
+        soup = BeautifulSoup(raw_text, "html.parser")
+        caption_divs = soup.find_all("div", class_="caption")
+        if not caption_divs:
+            return ""
+        lines = [d.get_text(" ", strip=True) for d in caption_divs if d.get_text(strip=True)]
+        return " ".join(lines)
+
+    if not _looks_like_caption_text(raw_text):
+        return ""
+
+    return _clean_caption_text(raw_text)
+
+
+def parse_granicus_captions(page_url: str, existing_hashes: set[str] | None = None):
+    try:
+        resp = requests.get(page_url, timeout=20, headers={"User-Agent": "dc-digest-bot/0.1"})
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Failed to fetch Granicus captions page: {e}")
+        return
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    table, headers = _find_table_with_headers(soup, ["name", "date", "captions"])
+    if not table:
+        print("Failed to find Granicus captions table.")
+        return
+
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if not cells or len(cells) < len(headers):
+            continue
+
+        index = {h: i for i, h in enumerate(headers)}
+        name = cells[index["name"]].get_text(" ", strip=True) if "name" in index else ""
+        date_text = cells[index["date"]].get_text(" ", strip=True) if "date" in index else ""
+        published_at = to_iso_datetime(date_text) if date_text else None
+
+        caption_url = _extract_caption_link(row, page_url, headers)
+        if not caption_url:
+            continue
+
+        clip_id = None
+        try:
+            qs = parse_qs(urlparse(caption_url).query)
+            clip_id = (qs.get("clip_id") or [None])[0]
+        except Exception:
+            pass
+
+        title = f"{name} (Captions)"
+        if date_text:
+            title = f"{title} - {date_text}"
+
+        content_hash = make_content_hash(title, caption_url)
+        if existing_hashes is not None and content_hash in existing_hashes:
+            continue
+
+        caption_text = _fetch_caption_text(caption_url)
+        if not caption_text:
+            continue
+
+        summary = caption_text[:8000]
+
+        yield {
+            "source": "granicus_captions",
+            "source_item_id": clip_id,
+            "title": title,
+            "url": caption_url,
+            "published_at": published_at,
+            "summary": summary,
+            "content_hash": content_hash,
+        }
+
+
 def matches_keywords(text: str, keywords: list[str]) -> bool:
     if not keywords:
         return True
@@ -176,7 +324,7 @@ def main() -> int:
     init_db(conn)
 
     keywords = cfg.get("filters", {}).get("dc_council_keywords", [])
-    official_sources = {"granicus_rss", "council_rss", "youtube"}
+    official_sources = {"granicus_rss", "granicus_captions", "council_rss", "youtube"}
 
     total_new = 0
     for f in cfg.get("feeds", []):
@@ -186,13 +334,22 @@ def main() -> int:
         start = time.monotonic()
         print(f"Fetching: {name} ({source})")
 
-        for item in parse_feed(name, source, url):
+        existing_hashes = None
+        if source == "granicus_captions":
+            existing_hashes = get_existing_hashes(conn, source)
+            items_iter = parse_granicus_captions(url, existing_hashes)
+        else:
+            items_iter = parse_feed(name, source, url)
+
+        for item in items_iter:
             if source not in official_sources and keywords:
                 combined = f"{item.get('title', '')} {item.get('summary', '')}"
                 if not matches_keywords(combined, keywords):
                     continue
             inserted = insert_item(conn, item)
             if inserted:
+                if existing_hashes is not None:
+                    existing_hashes.add(item.get("content_hash", ""))
                 total_new += 1
 
         elapsed = time.monotonic() - start

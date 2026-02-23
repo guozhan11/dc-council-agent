@@ -60,17 +60,17 @@
 
         {% if ai_summary.sources and ai_summary.sources|length > 0 %}
           <p style="margin: 12px 0 6px; color: #111827; font-size: 13px; font-weight: 600;">Sources</p>
-          <ol style="color: #374151; font-size: 13px; padding-left: 18px; margin: 0 0 8px;">
+          <ul style="color: #374151; font-size: 13px; padding-left: 0; margin: 0 0 8px; list-style: none;">
             {% for s in ai_summary.sources %}
               <li style="margin: 6px 0;">
                 {% if s.url %}
-                  <a href="{{ s.url }}" style="color: #1f4eb4; text-decoration: none;">{{ s.title or ("Source " ~ s.n) }}</a>
+                  <a href="{{ s.url }}" style="color: #1f4eb4; text-decoration: none;">[{{ s.n }}] {{ s.title or ("Source " ~ s.n) }}</a>
                 {% else %}
-                  {{ s.title or ("Source " ~ s.n) }}
+                  [{{ s.n }}] {{ s.title or ("Source " ~ s.n) }}
                 {% endif %}
               </li>
             {% endfor %}
-          </ol>
+          </ul>
         {% endif %}
       {% endif %}
 

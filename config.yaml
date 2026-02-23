@@ -10,6 +10,10 @@ feeds:
     source: "granicus_rss"
     url: "https://dc.granicus.com/ViewPublisherRSS.php?mode=vpodcast&view_id=2"
 
+  - name: "Granicus captions"
+    source: "granicus_captions"
+    url: "https://dc.granicus.com/viewpublisher.php?view_id=2"
+
   - name: "YouTube channel videos"
     source: "youtube"
     url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCsRAGNZrk_9pfss7oyHs9GA"
@@ -54,6 +58,7 @@ youtube_api:
 ranking:
   source_weight:
     granicus_rss: 3
+    granicus_captions: 2
     youtube: 2
     youtube_live: 2
     youtube_upcoming: 2
