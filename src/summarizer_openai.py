@@ -6,6 +6,50 @@ from typing import Any, Dict, List
 from openai import OpenAI
 
 
+def _strip_code_fences(text: str) -> str:
+    cleaned = (text or "").strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.splitlines()
+        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
+            return "\n".join(lines[1:-1]).strip()
+    return cleaned
+
+
+def _extract_json_object(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end < start:
+        return text
+    return text[start : end + 1]
+
+
+def _repair_common_json_errors(text: str) -> str:
+    repaired = text
+
+    # Insert a missing comma between a completed JSON value and the next quoted key.
+    repaired = re.sub(r'("(?:\\.|[^"\\])*"|\]|\}|\d|true|false|null)\s*("[^"]+"\s*:)', r'\1, \2', repaired)
+
+    # Remove trailing commas before object/array close.
+    repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
+    return repaired
+
+
+def _load_summary_json(output_text: str) -> Dict[str, Any]:
+    cleaned_text = _strip_code_fences(output_text)
+    json_candidate = _extract_json_object(cleaned_text)
+
+    try:
+        return json.loads(json_candidate)
+    except json.JSONDecodeError as original_error:
+        repaired_candidate = _repair_common_json_errors(json_candidate)
+        try:
+            return json.loads(repaired_candidate)
+        except json.JSONDecodeError:
+            raise RuntimeError(
+                f"Model did not return valid JSON. Error: {original_error}\nRaw:\n{output_text}"
+            ) from original_error
+
+
 def _build_sources_block(items: List[Dict[str, Any]]) -> str:
     # Number sources starting from 1 so citations are [1], [2], ...
     lines = []
@@ -189,18 +233,7 @@ Here are the items as JSON:
                 if c.type == "output_text":
                     output_text += c.text
 
-    cleaned_text = output_text.strip()
-    if cleaned_text.startswith("```"):
-        lines = cleaned_text.splitlines()
-        if len(lines) >= 3 and lines[0].startswith("```") and lines[-1].startswith("```"):
-            cleaned_text = "\n".join(lines[1:-1]).strip()
-
-    try:
-        summary = json.loads(cleaned_text)
-    except Exception as e:
-        raise RuntimeError(
-            f"Model did not return valid JSON. Error: {e}\nRaw:\n{output_text}"
-        )
+    summary = _load_summary_json(output_text)
 
     for bullet in summary.get("bullets", []):
         text = str(bullet.get("text") or "")

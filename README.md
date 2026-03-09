@@ -45,6 +45,8 @@ Optional:
 
 - `TEST_TO_EMAIL`: Test recipient address
 - `TEST_ONLY_MODE`: Set to `true`/`1` to send only to `TEST_TO_EMAIL`
+- `TEST_SUBSCRIBER_TOPICS`: Optional local-only topics override used when `TEST_TO_EMAIL` is not a real subscriber
+- `TEST_SUBSCRIBER_INTERESTS`: Optional local-only interests override used when `TEST_TO_EMAIL` is not a real subscriber
 
 ---
 

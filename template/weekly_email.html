@@ -21,6 +21,17 @@
     {# -------------------- AI SUMMARY ONLY -------------------- #}
       {% if ai_summary and ai_summary.bullets and ai_summary.bullets|length > 0 %}
         <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 18px 0;" />
+
+        {% if ai_summary.preferences_notice_html %}
+          <p style="margin: 0 0 10px; color: #52606d; font-size: 13px;">
+            {{ ai_summary.preferences_notice_html | safe }}
+          </p>
+        {% elif ai_summary.preferences_notice %}
+          <p style="margin: 0 0 10px; color: #52606d; font-size: 13px;">
+            {{ ai_summary.preferences_notice }}
+          </p>
+        {% endif %}
+
         <h3 style="margin: 0 0 10px; font-size: 16px; color: #111827; letter-spacing: 0.2px;">Weekly summary</h3>
 
         {% if ai_summary.interest_notice_html %}

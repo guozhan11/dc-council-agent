@@ -1,5 +1,6 @@
 import sys
 import os
+import html
 import yaml
 import requests
 from urllib.parse import urlparse
@@ -14,6 +15,69 @@ from emailer_gmail import send_email_gmail_smtp
 from summarizer_openai import summarize_updates
 
 load_dotenv()
+
+
+def build_test_subscriber(subscribers: list[dict], test_to: str) -> dict:
+    normalized_test_to = test_to.strip().lower()
+    for subscriber in subscribers:
+        email = str(subscriber.get("email") or "").strip().lower()
+        if email == normalized_test_to:
+            matched = dict(subscriber)
+            matched.setdefault("unsubscribe_token", "TESTTOKEN")
+            return matched
+
+    test_subscriber = {
+        "email": test_to,
+        "unsubscribe_token": "TESTTOKEN",
+    }
+
+    test_topics = str(os.environ.get("TEST_SUBSCRIBER_TOPICS", "") or "").strip()
+    test_interests = str(os.environ.get("TEST_SUBSCRIBER_INTERESTS", "") or "").strip()
+    if test_topics:
+        test_subscriber["topics"] = test_topics
+    if test_interests:
+        test_subscriber["interests"] = test_interests
+    return test_subscriber
+
+
+def build_preferences_notice(subscriber: dict) -> tuple[str, str] | tuple[None, None]:
+    topics = str(subscriber.get("topics") or "").strip()
+    interests = str(subscriber.get("interests") or "").strip()
+
+    if not topics and not interests:
+        return None, None
+
+    update_url = "https://guozhan11.github.io/dc-council-agent/subscribe.html"
+
+    if interests and topics:
+        plain = (
+            f"This digest is tailored to your interests in {interests} and your selected topic(s): {topics}. "
+            f"Update your preferences anytime: {update_url}"
+        )
+        rich = (
+            f"This digest is tailored to your interests in {html.escape(interests)} and your selected topic(s): {html.escape(topics)}. "
+            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+        )
+    elif interests:
+        plain = (
+            f"This digest is tailored to your interests in {interests}. "
+            f"Update your preferences anytime: {update_url}"
+        )
+        rich = (
+            f"This digest is tailored to your interests in {html.escape(interests)}. "
+            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+        )
+    else:
+        plain = (
+            f"This digest is tailored to your selected topic(s): {topics}. "
+            f"Update your preferences anytime: {update_url}"
+        )
+        rich = (
+            f"This digest is tailored to your selected topic(s): {html.escape(topics)}. "
+            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+        )
+
+    return plain, rich
 
 
 def load_config(path: str) -> dict:
@@ -129,7 +193,12 @@ def main() -> int:
     test_only = os.environ.get("TEST_ONLY_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
     if test_to and test_only:
         print(f"TEST_ONLY_MODE enabled: sending only to {test_to}")
-        subscribers = [{"email": test_to, "unsubscribe_token": "TESTTOKEN"}]
+        test_subscriber = build_test_subscriber(subscribers, test_to)
+        if test_subscriber.get("topics") or test_subscriber.get("interests"):
+            print("Using subscriber preferences for test send.")
+        else:
+            print("No saved preferences found for test email; using TEST_SUBSCRIBER_TOPICS/TEST_SUBSCRIBER_INTERESTS if set.")
+        subscribers = [test_subscriber]
     elif test_to and not test_only:
         print("TEST_TO_EMAIL is set, but TEST_ONLY_MODE is not enabled; sending to all active subscribers.")
     if not subscribers:
@@ -156,6 +225,11 @@ def main() -> int:
             print(f"AI summary error for {sub.get('email')}: {e}")
             print("Aborting send: AI summary failed to generate.")
             return 1
+
+        preferences_notice, preferences_notice_html = build_preferences_notice(sub)
+        if preferences_notice:
+            ai_summary["preferences_notice"] = preferences_notice
+            ai_summary["preferences_notice_html"] = preferences_notice_html
 
         if not interests:
             ai_summary["interest_notice"] = (
