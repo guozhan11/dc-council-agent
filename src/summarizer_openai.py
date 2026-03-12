@@ -6,6 +6,23 @@ from typing import Any, Dict, List
 from openai import OpenAI
 
 
+def _get_openai_client() -> OpenAI:
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set")
+    return OpenAI(api_key=api_key)
+
+
+def _response_to_text(resp: Any) -> str:
+    output_text = ""
+    for part in resp.output:
+        if part.type == "message":
+            for c in part.content:
+                if c.type == "output_text":
+                    output_text += c.text
+    return output_text
+
+
 def _strip_code_fences(text: str) -> str:
     cleaned = (text or "").strip()
     if cleaned.startswith("```"):
@@ -48,6 +65,36 @@ def _load_summary_json(output_text: str) -> Dict[str, Any]:
             raise RuntimeError(
                 f"Model did not return valid JSON. Error: {original_error}\nRaw:\n{output_text}"
             ) from original_error
+
+
+def summarize_interest_phrase(interests: str, *, model: str = "gpt-4.1-mini") -> str:
+    cleaned_interests = str(interests or "").strip()
+    if not cleaned_interests:
+        return ""
+
+    client = _get_openai_client()
+    prompt = f"""
+Rewrite the subscriber's free-form interest text as a short, clean preference phrase for an email.
+
+Rules:
+- Preserve the actual subjects the subscriber cares about.
+- Remove question wording, filler words, and first-person phrasing.
+- Return a concise noun phrase, not a sentence.
+- Do not add new topics.
+- Keep it under 12 words when possible.
+- Return plain text only, with no quotes and no explanation.
+
+Subscriber interest text:
+{cleaned_interests}
+""".strip()
+
+    resp = client.responses.create(
+        model=model,
+        input=prompt,
+    )
+    output_text = _response_to_text(resp)
+    phrase = _strip_code_fences(output_text).strip().strip('"').strip("'").strip()
+    return re.sub(r"\s+", " ", phrase).strip(" .;,:!?")
 
 
 def _build_sources_block(items: List[Dict[str, Any]]) -> str:
@@ -125,6 +172,19 @@ def _parse_source_numbers(value: Any, max_n: int) -> List[int]:
     return nums
 
 
+def _split_bullet_text(text: str) -> tuple[str, str]:
+    normalized_text = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not normalized_text:
+        return "", ""
+
+    parts = re.split(r"\s*—\s*|\s+-\s+", normalized_text, maxsplit=1)
+    if len(parts) == 2:
+        lead = parts[0].strip(" .;,:!?")
+        detail = parts[1].strip()
+        return lead, detail
+    return normalized_text, ""
+
+
 def summarize_updates(
     items: List[Dict[str, Any]],
     *,
@@ -142,10 +202,6 @@ def summarize_updates(
     }
     """
 
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not set")
-
     if not items:
         return {
             "headline": "No updates this week.",
@@ -153,7 +209,7 @@ def summarize_updates(
             "sources": [],
         }
 
-    client = OpenAI(api_key=api_key)
+    client = _get_openai_client()
 
     # Keep the input compact but informative.
     # The model will cite items by index (1-based).
@@ -226,12 +282,7 @@ Here are the items as JSON:
     )
 
     # SDK response format can vary by version; this is a robust way:
-    output_text = ""
-    for part in resp.output:
-        if part.type == "message":
-            for c in part.content:
-                if c.type == "output_text":
-                    output_text += c.text
+    output_text = _response_to_text(resp)
 
     summary = _load_summary_json(output_text)
 
@@ -252,11 +303,16 @@ Here are the items as JSON:
         text = re.sub(r"\s*\((?:Sources?|Source)\s*:[^)]*\)\s*$", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\bSources?\s*:?\s*\[[^\]]*\]", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*\[[0-9,\s]+\]", "", text)
-        bullet["text"] = re.sub(r"\s+", " ", text).strip()
+        bullet_text = re.sub(r"\s+", " ", text).strip()
+        lead, detail = _split_bullet_text(bullet_text)
+        bullet["lead"] = lead
+        bullet["detail"] = detail
+        bullet["text"] = f"{lead} — {detail}" if detail else lead
 
     summary["bullets"] = _dedupe_bullets(summary.get("bullets", []))[:max_bullets]
 
     ordered_source_ids: List[int] = []
+    filtered_bullets: List[Dict[str, Any]] = []
     for b in summary.get("bullets", []):
         normalized: List[int] = []
         for s in b.get("sources", []):
@@ -265,6 +321,16 @@ Here are the items as JSON:
             if s not in ordered_source_ids:
                 ordered_source_ids.append(s)
         b["sources"] = normalized
+        if b.get("text") and normalized:
+            filtered_bullets.append(b)
+
+    summary["bullets"] = filtered_bullets[:max_bullets]
+
+    ordered_source_ids = []
+    for b in summary.get("bullets", []):
+        for s in b.get("sources", []):
+            if s not in ordered_source_ids:
+                ordered_source_ids.append(s)
 
     renumber_map = {old: idx + 1 for idx, old in enumerate(ordered_source_ids)}
 

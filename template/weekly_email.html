@@ -46,10 +46,11 @@
 
         <ol style="padding-left: 18px; margin: 0 0 10px;">
           {% for b in ai_summary.bullets %}
-            {% set parts = b.text.split(" — ", 1) %}
             <li style="margin-bottom: 10px;">
-              {% if parts|length > 1 %}
-                <strong>{{ parts[0] }}</strong> — {{ parts[1] }}
+              {% if b.detail %}
+                <strong>{{ b.lead }}</strong> — {{ b.detail }}
+              {% elif b.lead %}
+                <strong>{{ b.lead }}</strong>
               {% else %}
                 <strong>{{ b.text }}</strong>
               {% endif %}

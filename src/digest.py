@@ -1,6 +1,7 @@
 import sys
 import os
 import html
+import re
 import yaml
 import requests
 from urllib.parse import urlparse
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 from db import connect, init_db, get_items_since
 from utils import score_item
 from emailer_gmail import send_email_gmail_smtp
-from summarizer_openai import summarize_updates
+from summarizer_openai import summarize_interest_phrase, summarize_updates
 
 load_dotenv()
 
@@ -40,31 +41,53 @@ def build_test_subscriber(subscribers: list[dict], test_to: str) -> dict:
     return test_subscriber
 
 
-def build_preferences_notice(subscriber: dict) -> tuple[str, str] | tuple[None, None]:
+def summarize_interest_text(interests: str) -> str:
+    text = re.sub(r"\s+", " ", str(interests or "").strip())
+    if not text:
+        return ""
+
+    text = text.strip(" .;,:!?")
+    lead_in_patterns = [
+        r"^(?:i|we)\s+(?:care about|am interested in|are interested in|want to follow|follow|want updates about|want updates on|would like updates about|would like updates on)\s+",
+        r"^(?:interested in|updates about|updates on|about)\s+",
+    ]
+    for pattern in lead_in_patterns:
+        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+
+    text = re.sub(r"\b(?:also|too)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" .;,:!?")
+    return text or str(interests or "").strip()
+
+
+def build_preferences_notice(
+    subscriber: dict,
+    summarized_interests: str | None = None,
+) -> tuple[str, str] | tuple[None, None]:
     topics = str(subscriber.get("topics") or "").strip()
     interests = str(subscriber.get("interests") or "").strip()
+    summarized_interests = (summarized_interests or "").strip() or summarize_interest_text(interests)
 
     if not topics and not interests:
         return None, None
 
     update_url = "https://guozhan11.github.io/dc-council-agent/subscribe.html"
 
-    if interests and topics:
+    if summarized_interests and topics:
         plain = (
-            f"This digest is tailored to your interests in {interests} and your selected topic(s): {topics}. "
+            f"This digest is tailored to your interests in {summarized_interests} and your selected topic(s): {topics}. "
             f"Update your preferences anytime: {update_url}"
         )
         rich = (
-            f"This digest is tailored to your interests in {html.escape(interests)} and your selected topic(s): {html.escape(topics)}. "
+            f"This digest is tailored to your interests in {html.escape(summarized_interests)} and your selected topic(s): {html.escape(topics)}. "
             f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
         )
-    elif interests:
+    elif summarized_interests:
         plain = (
-            f"This digest is tailored to your interests in {interests}. "
+            f"This digest is tailored to your interests in {summarized_interests}. "
             f"Update your preferences anytime: {update_url}"
         )
         rich = (
-            f"This digest is tailored to your interests in {html.escape(interests)}. "
+            f"This digest is tailored to your interests in {html.escape(summarized_interests)}. "
             f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
         )
     else:
@@ -206,6 +229,7 @@ def main() -> int:
         return 0
 
     summaries_by_email = {}
+    interest_phrase_cache: dict[str, str] = {}
     for sub in subscribers:
         interests_parts = []
         if sub.get("topics"):
@@ -226,7 +250,23 @@ def main() -> int:
             print("Aborting send: AI summary failed to generate.")
             return 1
 
-        preferences_notice, preferences_notice_html = build_preferences_notice(sub)
+        summarized_interest = ""
+        raw_interests = str(sub.get("interests") or "").strip()
+        if raw_interests:
+            cached_interest_phrase = interest_phrase_cache.get(raw_interests)
+            if cached_interest_phrase is None:
+                try:
+                    cached_interest_phrase = summarize_interest_phrase(raw_interests)
+                except Exception as e:
+                    print(f"Interest summary fallback for {sub.get('email')}: {e}")
+                    cached_interest_phrase = summarize_interest_text(raw_interests)
+                interest_phrase_cache[raw_interests] = cached_interest_phrase
+            summarized_interest = cached_interest_phrase
+
+        preferences_notice, preferences_notice_html = build_preferences_notice(
+            sub,
+            summarized_interests=summarized_interest,
+        )
         if preferences_notice:
             ai_summary["preferences_notice"] = preferences_notice
             ai_summary["preferences_notice_html"] = preferences_notice_html
