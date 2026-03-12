@@ -4,6 +4,8 @@ A lightweight pipeline that collects DC Council updates from multiple sources, s
 
 Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
+![Subscribe form preview](docs/images/sub_page.png)
+
 ---
 
 ## What this repo does
