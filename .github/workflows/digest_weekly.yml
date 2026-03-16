@@ -28,5 +28,6 @@ jobs:
           GMAIL_SMTP_USERNAME: ${{ secrets.GMAIL_SMTP_USERNAME }}
           GMAIL_SMTP_APP_PASSWORD: ${{ secrets.GMAIL_SMTP_APP_PASSWORD }}
           TEST_TO_EMAIL: ${{ secrets.TEST_TO_EMAIL }}
+          TEST_ONLY_MODE: ${{ secrets.TEST_ONLY_MODE }}
         run: |
           python src/digest.py
