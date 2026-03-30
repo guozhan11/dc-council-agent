@@ -128,6 +128,38 @@ def build_plain_text(subject: str, highlights: list, sections: dict, unsubscribe
     return "\n".join(lines)
 
 
+def build_fallback_ai_summary(items_sorted: list[dict], max_bullets: int = 3) -> dict:
+    fallback_items = items_sorted[:max_bullets]
+    bullets = []
+    sources = []
+    for idx, it in enumerate(fallback_items, start=1):
+        title = (it.get("title") or "Update").strip()
+        source_name = (it.get("source") or "source").strip()
+        bullets.append(
+            {
+                "text": f"{title} — Key update from {source_name} this week.",
+                "lead": title,
+                "detail": f"Key update from {source_name} this week.",
+                "sources": [idx],
+            }
+        )
+        sources.append(
+            {
+                "n": idx,
+                "title": title,
+                "url": it.get("url") or "",
+                "source": source_name,
+            }
+        )
+
+    return {
+        "headline": "DC Council Weekly Updates",
+        "interest_notice": "AI summary fallback was used due to a temporary processing issue.",
+        "bullets": bullets,
+        "sources": sources,
+    }
+
+
 def get_active_subscribers_from_apps_script() -> list[dict]:
     def _clean_secret(value: str) -> str:
         return str(value or "").strip().strip('"').strip("'")
@@ -230,6 +262,7 @@ def main() -> int:
 
     summaries_by_email = {}
     interest_phrase_cache: dict[str, str] = {}
+    ai_failures = 0
     for sub in subscribers:
         interests_parts = []
         if sub.get("topics"):
@@ -246,9 +279,10 @@ def main() -> int:
                 interests=interests,
             )
         except Exception as e:
+            ai_failures += 1
             print(f"AI summary error for {sub.get('email')}: {e}")
-            print("Aborting send: AI summary failed to generate.")
-            return 1
+            print("Using fallback summary for this subscriber.")
+            ai_summary = build_fallback_ai_summary(top_for_ai, max_bullets=3)
 
         summarized_interest = ""
         raw_interests = str(sub.get("interests") or "").strip()
@@ -309,6 +343,8 @@ def main() -> int:
     # Example: https://script.google.com/macros/s/XXX/exec
     base_unsub = email_cfg["base_url_for_unsubscribe"].rstrip("/")
 
+    sent_count = 0
+    send_failures = 0
     for sub in subscribers:
         to_email = sub["email"]
         token = sub["unsubscribe_token"]
@@ -331,20 +367,29 @@ def main() -> int:
 
         # If your send_email_gmail_smtp DOES accept from_name, keep it.
         # If not, remove from_name.
-        send_email_gmail_smtp(
-            smtp_username=smtp_user,
-            smtp_app_password=smtp_pass,
-            from_email=email_cfg["from_email"],
-            to_email=to_email,
-            subject=summary_bundle.get("subject"),
-            html_content=html,
-            text_content=text,
-            from_name=email_cfg.get("from_name", ""),
-        )
+        try:
+            send_email_gmail_smtp(
+                smtp_username=smtp_user,
+                smtp_app_password=smtp_pass,
+                from_email=email_cfg["from_email"],
+                to_email=to_email,
+                subject=summary_bundle.get("subject"),
+                html_content=html,
+                text_content=text,
+                from_name=email_cfg.get("from_name", ""),
+            )
+            sent_count += 1
+            print(f"Sent to {to_email}")
+        except Exception as e:
+            send_failures += 1
+            print(f"Send failed for {to_email}: {e}")
 
-        print(f"Sent to {to_email}")
-
-    print("Weekly digest sent.")
+    print(
+        f"Weekly digest finished. sent={sent_count}, send_failures={send_failures}, ai_fallbacks={ai_failures}"
+    )
+    if sent_count == 0:
+        print("No messages were sent successfully.")
+        return 1
     return 0
 
 
