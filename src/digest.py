@@ -133,7 +133,11 @@ def build_fallback_ai_summary(items_sorted: list[dict], max_bullets: int = 3) ->
     bullets = []
     sources = []
     for idx, it in enumerate(fallback_items, start=1):
-        title = (it.get("title") or "Update").strip()
+        title = html.unescape((it.get("title") or "Update").strip())
+        title = re.sub(r"<[^>]+>", "", title)
+        title = re.sub(r"\*\*(.*?)\*\*", r"\1", title)
+        title = re.sub(r"__(.*?)__", r"\1", title)
+        title = re.sub(r"\s+", " ", title).strip()
         source_name = (it.get("source") or "source").strip()
         bullets.append(
             {

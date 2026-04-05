@@ -1,6 +1,8 @@
 import json
 import os
 import re
+import html
+from urllib.parse import parse_qs, urlparse
 from typing import Any, Dict, List
 
 from openai import OpenAI
@@ -101,7 +103,7 @@ def _build_sources_block(items: List[Dict[str, Any]]) -> str:
     # Number sources starting from 1 so citations are [1], [2], ...
     lines = []
     for i, it in enumerate(items, start=1):
-        title = (it.get("title") or "").strip() or "Untitled"
+        title = _sanitize_source_title(it.get("title") or "") or "Untitled"
         url = (it.get("url") or "").strip()
         source = (it.get("source") or "").strip()
         label = f"[{i}] {title}"
@@ -185,6 +187,33 @@ def _split_bullet_text(text: str) -> tuple[str, str]:
     return normalized_text, ""
 
 
+def _sanitize_source_title(value: str) -> str:
+    text = html.unescape(str(value or ""))
+    # Some feeds include inline markup (<b>..</b>) in titles.
+    text = re.sub(r"<[^>]+>", "", text)
+    # Strip simple markdown emphasis while keeping inner text.
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"__(.*?)__", r"\1", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _normalize_source_url(item: Dict[str, Any]) -> str:
+    url = str(item.get("url") or "").strip()
+    source = str(item.get("source") or "").strip()
+    if source != "granicus_rss" or "DownloadFile.php" not in url:
+        return url
+
+    try:
+        clip_id = (parse_qs(urlparse(url).query).get("clip_id") or [None])[0]
+    except Exception:
+        clip_id = None
+
+    if clip_id:
+        return f"https://dc.granicus.com/MediaPlayer.php?view_id=2&clip_id={clip_id}"
+    return url
+
+
 def summarize_updates(
     items: List[Dict[str, Any]],
     *,
@@ -217,9 +246,9 @@ def summarize_updates(
     for it in items:
         trimmed_items.append(
             {
-                "title": (it.get("title") or "")[:200],
+                "title": _sanitize_source_title((it.get("title") or ""))[:200],
                 "source": (it.get("source") or "")[:80],
-                "url": (it.get("url") or "")[:500],
+                "url": _normalize_source_url(it)[:500],
                 # Prefer the "content" / "summary" you already scraped
                 "text": (it.get("text") or it.get("summary") or "")[:2000],
                 # Optional fields if you have them
@@ -345,7 +374,7 @@ Here are the items as JSON:
         sources.append(
             {
                 "n": renumber_map.get(old_id, old_id),
-                "title": it.get("title") or "",
+                "title": _sanitize_source_title(it.get("title") or ""),
                 "url": it.get("url") or "",
                 "source": it.get("source") or "",
             }

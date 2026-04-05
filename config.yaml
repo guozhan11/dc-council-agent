@@ -14,6 +14,10 @@ feeds:
     source: "granicus_captions"
     url: "https://dc.granicus.com/viewpublisher.php?view_id=2"
 
+  - name: "DC Register recent rulemakings"
+    source: "dcregs"
+    url: "https://www.dcregs.dc.gov/default.aspx"
+
   - name: "YouTube channel videos"
     source: "youtube"
     url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCsRAGNZrk_9pfss7oyHs9GA"
@@ -62,6 +66,8 @@ ranking:
     youtube: 2
     youtube_live: 2
     youtube_upcoming: 2
+    dcregs_proposed: 2
+    dcregs_emergency: 2
     google_alerts: 3
     dc_bureau: 1
     washington_post: 1
@@ -95,6 +101,30 @@ filters:
     - "phil mendelson"
     - "council of the district"
     - "dc legislative"
+    - "anita bonds"
+    - "robert white"
+    - "christina henderson"
+    - "doni crawford"
+    - "brianne nadeau"
+    - "brooke pinto"
+    - "matthew frumin"
+    - "janeese lewis george"
+    - "zachary parker"
+    - "charles allen"
+    - "wendell felder"
+    - "trayon white"
+
+dcregs:
+  max_items_per_type: 25
+  council_keywords:
+    - "council of the district of columbia"
+    - "dc council"
+    - "district of columbia council"
+    - "councilmember"
+    - "chairman mendelson"
+    - "phil mendelson"
+    - "committee of the whole"
+    - "legislative meeting"
     - "anita bonds"
     - "robert white"
     - "christina henderson"

@@ -12,6 +12,12 @@ from db import connect, init_db, insert_item, get_existing_hashes
 from utils import make_content_hash, to_iso_datetime, strip_html
 
 
+DCREGS_ACTIVITY_TARGETS = [
+    ("ctl00$MainContent$lnkPrRuleMakings", "dcregs_proposed", "Proposed Rulemaking"),
+    ("ctl00$MainContent$lblEmerRuleMakings", "dcregs_emergency", "Emergency Rulemaking"),
+]
+
+
 def load_config(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -53,20 +59,42 @@ def resolve_google_redirect(url: str) -> str:
         return url
 
 
-def extract_granicus_download_url(summary_html: str) -> str:
-    """
-    In Granicus RSS, the summary HTML usually contains a link like:
-      https://dc.granicus.com/DownloadFile.php?view_id=2&clip_id=XXXXX
+def _extract_granicus_clip_id(url: str) -> str | None:
+    if not url:
+        return None
+    try:
+        qs = parse_qs(urlparse(url).query)
+        clip_id = (qs.get("clip_id") or [None])[0]
+        return str(clip_id) if clip_id else None
+    except Exception:
+        return None
 
-    We extract it so your DB stores the direct downloadable file URL.
-    """
-    if not summary_html:
-        return ""
 
-    m = re.search(r'href="(https://dc\.granicus\.com/DownloadFile\.php[^"]+)"', summary_html)
-    if m:
-        return m.group(1).replace("&amp;", "&")
-    return ""
+def normalize_granicus_video_url(raw_link: str, summary_html: str) -> str:
+    """
+    Prefer Granicus MediaPlayer URLs so clicking opens the player page
+    instead of triggering a direct file download.
+    """
+    cleaned_link = (raw_link or "").replace("&amp;", "&")
+
+    if "MediaPlayer.php" in cleaned_link:
+        return cleaned_link
+
+    if summary_html:
+        media_match = re.search(r'href="(https://dc\.granicus\.com/MediaPlayer\.php[^"]+)"', summary_html)
+        if media_match:
+            return media_match.group(1).replace("&amp;", "&")
+
+    clip_id = _extract_granicus_clip_id(cleaned_link)
+    if not clip_id and summary_html:
+        download_match = re.search(r'href="(https://dc\.granicus\.com/DownloadFile\.php[^"]+)"', summary_html)
+        if download_match:
+            clip_id = _extract_granicus_clip_id(download_match.group(1).replace("&amp;", "&"))
+
+    if clip_id:
+        return f"https://dc.granicus.com/MediaPlayer.php?view_id=2&clip_id={clip_id}"
+
+    return cleaned_link
 
 
 def fetch_feed(url: str, source: str):
@@ -132,11 +160,9 @@ def parse_feed(feed_name: str, source: str, url: str):
         # 3) Decide which URL to store
         link = raw_link
 
-        # Granicus: store the direct DownloadFile link if present
+        # Granicus: store the player page URL (not direct DownloadFile URLs)
         if source == "granicus_rss":
-            dl = extract_granicus_download_url(summary_raw)
-            if dl:
-                link = dl
+            link = normalize_granicus_video_url(raw_link, summary_raw)
 
         # Google Alerts: resolve to real destination instead of google.com/url tracking
         if source == "google_alerts":
@@ -302,6 +328,130 @@ def parse_granicus_captions(page_url: str, existing_hashes: set[str] | None = No
         }
 
 
+def _extract_hidden_inputs(html_text: str) -> dict[str, str]:
+    soup = BeautifulSoup(html_text, "html.parser")
+    form = soup.find("form")
+    if not form:
+        return {}
+
+    hidden_fields: dict[str, str] = {}
+    for input_el in form.find_all("input", {"type": "hidden"}):
+        name = input_el.get("name")
+        if not name:
+            continue
+        hidden_fields[name] = input_el.get("value", "")
+    return hidden_fields
+
+
+def _postback(session: requests.Session, page_url: str, base_html: str, event_target: str) -> str:
+    payload = _extract_hidden_inputs(base_html)
+    if not payload:
+        return ""
+    payload["__EVENTTARGET"] = event_target
+    payload["__EVENTARGUMENT"] = ""
+    try:
+        resp = session.post(page_url, data=payload, timeout=30)
+        resp.raise_for_status()
+        return resp.text
+    except Exception:
+        return ""
+
+
+def _find_dcregs_notice_table(html_text: str):
+    soup = BeautifulSoup(html_text, "html.parser")
+    for table in soup.find_all("table"):
+        headers = [th.get_text(" ", strip=True).lower() for th in table.find_all("th")]
+        if {"notice id", "agency name", "subject"}.issubset(set(headers)):
+            return table, headers
+    return None, []
+
+
+def parse_dcregs_recent_activities(
+    page_url: str,
+    max_items_per_type: int = 25,
+    council_keywords: list[str] | None = None,
+):
+    session = requests.Session()
+    session.headers.update({"User-Agent": "dc-digest-bot/0.1"})
+
+    try:
+        home_resp = session.get(page_url, timeout=30)
+        home_resp.raise_for_status()
+        home_html = home_resp.text
+    except Exception as e:
+        print(f"Failed to fetch DCRegs home page: {e}")
+        return
+
+    for event_target, source_name, label in DCREGS_ACTIVITY_TARGETS:
+        activity_html = _postback(session, page_url, home_html, event_target)
+        if not activity_html:
+            continue
+
+        table, headers = _find_dcregs_notice_table(activity_html)
+        if not table:
+            continue
+
+        index = {h: i for i, h in enumerate(headers)}
+        candidates = []
+        for row in table.find_all("tr"):
+            cells = row.find_all("td")
+            if not cells:
+                continue
+
+            values = [c.get_text(" ", strip=True) for c in cells]
+            if not "".join(values).strip():
+                continue
+
+            notice_id = values[index["notice id"]] if "notice id" in index and len(values) > index["notice id"] else ""
+            agency = values[index["agency name"]] if "agency name" in index and len(values) > index["agency name"] else ""
+            subject = values[index["subject"]] if "subject" in index and len(values) > index["subject"] else ""
+            register_issue = values[index["register issue"]] if "register issue" in index and len(values) > index["register issue"] else ""
+            action_date = values[index["action date"]] if "action date" in index and len(values) > index["action date"] else ""
+
+            if not notice_id and not subject:
+                continue
+
+            title_parts = [label]
+            if notice_id:
+                title_parts.append(notice_id)
+            if subject:
+                title_parts.append(subject)
+            title = " | ".join(title_parts)
+
+            summary_parts = []
+            if agency:
+                summary_parts.append(f"Agency: {agency}")
+            if register_issue:
+                summary_parts.append(f"Register issue: {register_issue}")
+            summary = " | ".join(summary_parts)
+
+            combined_text = " ".join([notice_id, agency, subject, register_issue]).strip()
+            if council_keywords and not matches_keywords(combined_text, council_keywords):
+                continue
+
+            item_url = page_url
+            if notice_id:
+                item_url = f"{page_url}#notice-{notice_id}"
+
+            content_hash = make_content_hash(title, item_url)
+
+            candidates.append(
+                {
+                "source": source_name,
+                "source_item_id": notice_id or None,
+                "title": title,
+                "url": item_url,
+                "published_at": to_iso_datetime(action_date) if action_date else None,
+                "summary": summary,
+                "content_hash": content_hash,
+                }
+            )
+
+        candidates.sort(key=lambda x: x.get("published_at") or "", reverse=True)
+        for item in candidates[:max_items_per_type]:
+            yield item
+
+
 def matches_keywords(text: str, keywords: list[str]) -> bool:
     if not keywords:
         return True
@@ -327,6 +477,9 @@ def main() -> int:
     official_sources = {"granicus_rss", "granicus_captions", "council_rss", "youtube"}
 
     total_new = 0
+    dcregs_cfg = cfg.get("dcregs", {})
+    dcregs_max_items = int(dcregs_cfg.get("max_items_per_type", 25))
+    dcregs_council_keywords = dcregs_cfg.get("council_keywords", [])
     for f in cfg.get("feeds", []):
         name = f["name"]
         source = f["source"]
@@ -338,6 +491,12 @@ def main() -> int:
         if source == "granicus_captions":
             existing_hashes = get_existing_hashes(conn, source)
             items_iter = parse_granicus_captions(url, existing_hashes)
+        elif source == "dcregs":
+            items_iter = parse_dcregs_recent_activities(
+                url,
+                max_items_per_type=dcregs_max_items,
+                council_keywords=dcregs_council_keywords,
+            )
         else:
             items_iter = parse_feed(name, source, url)
 
