@@ -1,5 +1,6 @@
 import sys
 import os
+import json
 import html
 import re
 import yaml
@@ -13,7 +14,7 @@ from dotenv import load_dotenv
 from db import connect, init_db, get_items_since
 from utils import score_item
 from emailer_gmail import send_email_gmail_smtp
-from summarizer_openai import summarize_interest_phrase, summarize_updates
+from summarizer_openai import summarize_interest_phrase, summarize_updates, review_summary_quality
 
 load_dotenv()
 
@@ -39,6 +40,129 @@ def build_test_subscriber(subscribers: list[dict], test_to: str) -> dict:
     if test_interests:
         test_subscriber["interests"] = test_interests
     return test_subscriber
+
+
+def parse_email_list(value: str) -> set[str]:
+    emails = set()
+    for token in re.split(r"[;,\s]+", str(value or "").strip()):
+        normalized = token.strip().lower()
+        if normalized and "@" in normalized:
+            emails.add(normalized)
+    return emails
+
+
+INTEREST_STOPWORDS = {
+    "about",
+    "against",
+    "around",
+    "because",
+    "between",
+    "council",
+    "district",
+    "focus",
+    "general",
+    "interest",
+    "interests",
+    "issues",
+    "policy",
+    "program",
+    "programs",
+    "public",
+    "their",
+    "these",
+    "those",
+    "topic",
+    "topics",
+    "update",
+    "updates",
+    "washington",
+    "week",
+    "with",
+}
+
+
+def extract_interest_terms(interests: str) -> set[str]:
+    terms = set()
+    for token in re.findall(r"[a-z0-9]+", str(interests or "").lower()):
+        if len(token) < 4:
+            continue
+        if token in INTEREST_STOPWORDS:
+            continue
+        terms.add(token)
+    return terms
+
+
+def filter_items_for_interests(items: list[dict], interests: str) -> list[dict]:
+    terms = extract_interest_terms(interests)
+    if not terms:
+        return []
+
+    matched = []
+    for it in items:
+        haystack = " ".join(
+            [
+                str(it.get("title") or ""),
+                str(it.get("summary") or ""),
+                str(it.get("text") or ""),
+                str(it.get("source") or ""),
+            ]
+        ).lower()
+        if any(term in haystack for term in terms):
+            matched.append(it)
+    return matched
+
+
+def send_delivery_alert(
+    *,
+    smtp_user: str,
+    smtp_pass: str,
+    from_email: str,
+    from_name: str,
+    alert_to_email: str,
+    subject_prefix: str,
+    failed_recipients: list[dict],
+    sent_count: int,
+) -> None:
+    if not alert_to_email:
+        return
+    if not failed_recipients:
+        return
+
+    utc_now = datetime.now(timezone.utc).isoformat()
+    subject = f"[Alert] {subject_prefix} delivery failures ({len(failed_recipients)})"
+    lines = [
+        "Digest delivery alert",
+        f"Timestamp (UTC): {utc_now}",
+        f"Sent successfully: {sent_count}",
+        f"Failed deliveries: {len(failed_recipients)}",
+        "",
+        "Failed recipients:",
+    ]
+    for item in failed_recipients:
+        lines.append(f"- {item.get('email')}: {item.get('error')}")
+
+    text_content = "\n".join(lines)
+    html_lines = ["<p><strong>Digest delivery alert</strong></p>"]
+    html_lines.append(f"<p>Timestamp (UTC): {html.escape(utc_now)}</p>")
+    html_lines.append(f"<p>Sent successfully: {sent_count}<br/>Failed deliveries: {len(failed_recipients)}</p>")
+    html_lines.append("<p><strong>Failed recipients:</strong></p><ul>")
+    for item in failed_recipients:
+        html_lines.append(
+            f"<li>{html.escape(str(item.get('email') or ''))}: {html.escape(str(item.get('error') or 'unknown error'))}</li>"
+        )
+    html_lines.append("</ul>")
+    html_content = "".join(html_lines)
+
+    send_email_gmail_smtp(
+        smtp_username=smtp_user,
+        smtp_app_password=smtp_pass,
+        from_email=from_email,
+        to_email=alert_to_email,
+        subject=subject,
+        html_content=html_content,
+        text_content=text_content,
+        from_name=from_name,
+    )
 
 
 def summarize_interest_text(interests: str) -> str:
@@ -189,6 +313,30 @@ def get_active_subscribers_from_apps_script() -> list[dict]:
 
 
 def main() -> int:
+    def _is_true(value: str) -> bool:
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    def _summary_format_ok(summary: dict) -> tuple[bool, str]:
+        if not isinstance(summary, dict):
+            return False, "summary is not an object"
+        headline = str(summary.get("headline") or "").strip()
+        bullets = summary.get("bullets") or []
+        sources = summary.get("sources") or []
+        if not headline:
+            return False, "missing headline"
+        if not bullets:
+            return False, "no bullets"
+        if not sources:
+            return False, "no sources"
+        for idx, bullet in enumerate(bullets, start=1):
+            text = str((bullet or {}).get("text") or "").strip()
+            srcs = (bullet or {}).get("sources") or []
+            if not text:
+                return False, f"bullet {idx} is empty"
+            if not srcs:
+                return False, f"bullet {idx} has no citations"
+        return True, "ok"
+
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     config_path = os.path.join(repo_root, "config.yaml")
     if len(sys.argv) > 1:
@@ -238,7 +386,7 @@ def main() -> int:
             sections["News mentions & other sources"].append(it)
 
     # ---- AI summary (use top K items only to control cost) ----
-    top_for_ai = items_sorted[:40]  # adjust (20-60 is typical)
+    top_for_ai = items_sorted
 
     # ---- Template setup (do this BEFORE render) ----
     # NOTE: set this to the actual folder name that contains weekly_email.html
@@ -249,7 +397,21 @@ def main() -> int:
     subscribers = get_active_subscribers_from_apps_script()
 
     test_to = os.environ.get("TEST_TO_EMAIL", "").strip()
-    test_only = os.environ.get("TEST_ONLY_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+    test_only = _is_true(os.environ.get("TEST_ONLY_MODE", ""))
+    preview_only = _is_true(os.environ.get("PREVIEW_ONLY_MODE", ""))
+    makeup_targets = parse_email_list(os.environ.get("MAKEUP_TARGET_EMAILS", ""))
+    alert_to_email = str(os.environ.get("DIGEST_ALERT_TO_EMAIL", "") or "").strip()
+    auto_quality_check = _is_true(os.environ.get("AUTO_QUALITY_CHECK", "true"))
+    quality_model = (os.environ.get("QUALITY_CHECK_MODEL", "") or "gpt-4.1-mini").strip()
+    try:
+        quality_min_score = int((os.environ.get("QUALITY_CHECK_MIN_SCORE", "70") or "70").strip())
+    except ValueError:
+        quality_min_score = 70
+    preview_dir = os.environ.get("PREVIEW_OUTPUT_DIR", "").strip() or os.path.join(repo_root, "tmp", "email_previews")
+    try:
+        preview_limit = max(1, int(os.environ.get("PREVIEW_RECIPIENT_LIMIT", "3").strip() or "3"))
+    except ValueError:
+        preview_limit = 3
     if test_to and test_only:
         print(f"TEST_ONLY_MODE enabled: sending only to {test_to}")
         test_subscriber = build_test_subscriber(subscribers, test_to)
@@ -260,6 +422,15 @@ def main() -> int:
         subscribers = [test_subscriber]
     elif test_to and not test_only:
         print("TEST_TO_EMAIL is set, but TEST_ONLY_MODE is not enabled; sending to all active subscribers.")
+
+    if makeup_targets:
+        active_map = {str(s.get("email") or "").strip().lower(): s for s in subscribers}
+        missing = sorted([email for email in makeup_targets if email not in active_map])
+        subscribers = [active_map[email] for email in sorted(makeup_targets) if email in active_map]
+        print(f"MAKEUP_TARGET_EMAILS enabled: attempting delivery only to {len(subscribers)} subscriber(s).")
+        if missing:
+            print("The following make-up targets are not active subscribers and will be skipped: " + ", ".join(missing))
+
     if not subscribers:
         print("No active subscribers. Exiting.")
         return 0
@@ -267,6 +438,10 @@ def main() -> int:
     summaries_by_email = {}
     interest_phrase_cache: dict[str, str] = {}
     ai_failures = 0
+    ai_fallbacks = 0
+    ai_fallback_emails: list[str] = []
+    format_blocks: list[tuple[str, str]] = []
+    quality_warnings: list[tuple[str, str]] = []
     for sub in subscribers:
         interests_parts = []
         if sub.get("topics"):
@@ -274,19 +449,45 @@ def main() -> int:
         if sub.get("interests"):
             interests_parts.append(str(sub.get("interests")).strip())
         interests = "; ".join([p for p in interests_parts if p]) or None
+        items_for_ai = top_for_ai
+        no_interest_match = False
+        if interests:
+            interest_matched_items = filter_items_for_interests(top_for_ai, interests)
+            if interest_matched_items:
+                items_for_ai = interest_matched_items
+            else:
+                no_interest_match = True
 
         try:
             ai_summary = summarize_updates(
-                top_for_ai,
+                items_for_ai,
                 model="gpt-4.1-mini",
                 max_bullets=3,
                 interests=interests,
             )
+            # Guard: AI succeeded but returned unusable references.
+            # Patch in rule-based bullets/sources so emails always carry
+            # valid citations.
+            has_bullets = bool(ai_summary.get("bullets"))
+            has_sources = bool(ai_summary.get("sources"))
+            all_bullets_cited = all(bool(b.get("sources")) for b in ai_summary.get("bullets", []))
+            if not has_bullets or not has_sources or not all_bullets_cited:
+                print(
+                    f"Warning: AI returned missing citations for {sub.get('email')}; "
+                    "patching with fallback bullets/sources."
+                )
+                fallback = build_fallback_ai_summary(items_for_ai or top_for_ai, max_bullets=3)
+                ai_summary["bullets"] = fallback["bullets"]
+                ai_summary["sources"] = fallback["sources"]
+                ai_fallbacks += 1
+                ai_fallback_emails.append(sub.get("email") or "(unknown)")
         except Exception as e:
             ai_failures += 1
+            ai_fallbacks += 1
+            ai_fallback_emails.append(sub.get("email") or "(unknown)")
             print(f"AI summary error for {sub.get('email')}: {e}")
             print("Using fallback summary for this subscriber.")
-            ai_summary = build_fallback_ai_summary(top_for_ai, max_bullets=3)
+            ai_summary = build_fallback_ai_summary(items_for_ai or top_for_ai, max_bullets=3)
 
         summarized_interest = ""
         raw_interests = str(sub.get("interests") or "").strip()
@@ -318,6 +519,47 @@ def main() -> int:
                 "This email covers highlights across all areas. Update your preferences for customization anytime "
                 "<a href=\"https://guozhan11.github.io/dc-council-agent/subscribe.html\">here</a>."
             )
+        elif no_interest_match:
+            # Deterministic message when no weekly items match subscriber interests.
+            ai_summary["interest_notice"] = (
+                f"No updates this week for your interests: {interests}. Showing general updates instead."
+            )
+            ai_summary["interest_notice_html"] = html.escape(ai_summary["interest_notice"])
+
+        quality_review = {
+            "approved": True,
+            "score": 100,
+            "issues": [],
+            "reason": "quality check disabled",
+        }
+        if auto_quality_check:
+            try:
+                quality_review = review_summary_quality(
+                    ai_summary,
+                    interests=interests,
+                    model=quality_model,
+                )
+            except Exception as e:
+                quality_review = {
+                    "approved": False,
+                    "score": 0,
+                    "issues": ["quality-check-error"],
+                    "reason": str(e),
+                }
+
+            review_approved = bool(quality_review.get("approved"))
+            review_score = int(quality_review.get("score", 0))
+            if not review_approved or review_score < quality_min_score:
+                reason = str(quality_review.get("reason") or "failed quality gate")
+                print(
+                    f"Quality warning for {sub.get('email')}: "
+                    f"approved={review_approved}, score={review_score}, reason={reason}"
+                )
+                quality_warnings.append((sub.get("email") or "(unknown)", reason))
+
+        format_ok, format_reason = _summary_format_ok(ai_summary)
+        if not format_ok:
+            format_blocks.append((sub.get("email") or "(unknown)", format_reason))
 
         source_url_map = {
             s.get("n"): s.get("url")
@@ -332,23 +574,129 @@ def main() -> int:
             "ai_summary": ai_summary,
             "source_url_map": source_url_map,
             "subject": subject,
+            "quality_review": quality_review,
         }
 
     provider = email_cfg.get("provider", "gmail_smtp")
     if provider != "gmail_smtp":
         raise ValueError('Set email.provider to "gmail_smtp" in config.yaml.')
 
-    smtp_user = os.environ.get("GMAIL_SMTP_USERNAME", "")
-    smtp_pass = os.environ.get("GMAIL_SMTP_APP_PASSWORD", "")
-    if not smtp_user or not smtp_pass:
-        raise RuntimeError("Missing GMAIL_SMTP_USERNAME or GMAIL_SMTP_APP_PASSWORD environment variables.")
+    # Safety rule: if any subscriber required AI fallback, abort the run and
+    # do not send any emails.
+    if ai_fallbacks > 0:
+        print(
+            "Aborting send: AI fallback was triggered for "
+            f"{ai_fallbacks} subscriber(s): {', '.join(ai_fallback_emails)}"
+        )
+        return 1
+
+    if format_blocks:
+        blocked_emails = ", ".join(email for email, _ in format_blocks)
+        print(
+            "Aborting send: summary format checks failed for "
+            f"{len(format_blocks)} subscriber(s): {blocked_emails}"
+        )
+        for email, reason in format_blocks:
+            print(f"- Format block {email}: {reason}")
+        return 1
+
+    if quality_warnings:
+        print(f"OpenAI quality warnings: {len(quality_warnings)} subscriber(s). Continuing send because format is valid.")
+        for email, reason in quality_warnings:
+            print(f"- Quality warning {email}: {reason}")
+
+    # Preflight quality report before any send attempt.
+    preflight_rows = []
+    for sub in subscribers:
+        email = sub.get("email")
+        summary_bundle = summaries_by_email.get(email, {})
+        ai_summary = summary_bundle.get("ai_summary") or {}
+        bullets = ai_summary.get("bullets") or []
+        sources = ai_summary.get("sources") or []
+        cited_bullets = sum(1 for b in bullets if b.get("sources"))
+        preflight_rows.append(
+            {
+                "email": email,
+                "subject": summary_bundle.get("subject") or "",
+                "bullet_count": len(bullets),
+                "cited_bullet_count": cited_bullets,
+                "source_count": len(sources),
+                "quality_score": int((summary_bundle.get("quality_review") or {}).get("score", 0)),
+            }
+        )
+
+    print(f"Preflight summary: subscribers={len(preflight_rows)}")
+    for row in preflight_rows:
+        print(
+            f"- {row['email']}: bullets={row['bullet_count']}, "
+            f"cited_bullets={row['cited_bullet_count']}, sources={row['source_count']}, "
+            f"quality_score={row['quality_score']}"
+        )
+
+    empty_or_thin = [
+        row["email"]
+        for row in preflight_rows
+        if row["bullet_count"] < 1 or row["source_count"] < 1 or row["cited_bullet_count"] < 1
+    ]
+    if empty_or_thin:
+        print(
+            "Aborting send: preflight found empty/unusable summaries for "
+            f"{len(empty_or_thin)} subscriber(s): {', '.join(empty_or_thin)}"
+        )
+        return 1
 
     # Unsubscribe base should be your Apps Script /exec URL
     # Example: https://script.google.com/macros/s/XXX/exec
     base_unsub = email_cfg["base_url_for_unsubscribe"].rstrip("/")
 
+    if preview_only:
+        print("PREVIEW_ONLY_MODE enabled: generating previews and skipping all sends.")
+        os.makedirs(preview_dir, exist_ok=True)
+
+        for idx, sub in enumerate(subscribers[:preview_limit], start=1):
+            to_email = sub["email"]
+            token = sub["unsubscribe_token"]
+            unsubscribe_url = f"{base_unsub}?path=unsubscribe&token={token}"
+            summary_bundle = summaries_by_email.get(to_email, {})
+
+            rendered_html = template.render(
+                subject=summary_bundle.get("subject"),
+                window_start=window_start_date,
+                window_end=window_end_date,
+                highlights=highlights,
+                sections=dict(sections),
+                unsubscribe_url=unsubscribe_url,
+                ai_summary=summary_bundle.get("ai_summary"),
+                source_url_map=summary_bundle.get("source_url_map"),
+            )
+            rendered_text = build_plain_text(summary_bundle.get("subject"), highlights, dict(sections), unsubscribe_url)
+
+            safe_email = re.sub(r"[^A-Za-z0-9_.-]+", "_", to_email)
+            html_path = os.path.join(preview_dir, f"{idx:02d}_{safe_email}.html")
+            txt_path = os.path.join(preview_dir, f"{idx:02d}_{safe_email}.txt")
+
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(rendered_html)
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(rendered_text)
+
+            print(f"Preview written: {html_path}")
+            print(f"Preview written: {txt_path}")
+
+        print(
+            "Preview run finished. "
+            f"Generated {min(len(subscribers), preview_limit)} preview(s) in {preview_dir}."
+        )
+        return 0
+
+    smtp_user = os.environ.get("GMAIL_SMTP_USERNAME", "")
+    smtp_pass = os.environ.get("GMAIL_SMTP_APP_PASSWORD", "")
+    if not smtp_user or not smtp_pass:
+        raise RuntimeError("Missing GMAIL_SMTP_USERNAME or GMAIL_SMTP_APP_PASSWORD environment variables.")
+
     sent_count = 0
     send_failures = 0
+    failed_recipients: list[dict] = []
     for sub in subscribers:
         to_email = sub["email"]
         token = sub["unsubscribe_token"]
@@ -386,10 +734,44 @@ def main() -> int:
             print(f"Sent to {to_email}")
         except Exception as e:
             send_failures += 1
+            failed_recipients.append({"email": to_email, "error": str(e)})
             print(f"Send failed for {to_email}: {e}")
 
+    report_dir = os.path.join(repo_root, "tmp")
+    os.makedirs(report_dir, exist_ok=True)
+    failed_report_path = os.path.join(report_dir, "failed_recipients.json")
+    with open(failed_report_path, "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+                "sent_count": sent_count,
+                "send_failures": send_failures,
+                "failed_recipients": failed_recipients,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
+    print(f"Failure report written: {failed_report_path}")
+
+    if send_failures > 0 and alert_to_email:
+        try:
+            send_delivery_alert(
+                smtp_user=smtp_user,
+                smtp_pass=smtp_pass,
+                from_email=email_cfg["from_email"],
+                from_name=email_cfg.get("from_name", ""),
+                alert_to_email=alert_to_email,
+                subject_prefix=email_cfg.get("subject_prefix", "DC Council Digest"),
+                failed_recipients=failed_recipients,
+                sent_count=sent_count,
+            )
+            print(f"Delivery alert sent to {alert_to_email}")
+        except Exception as e:
+            print(f"Delivery alert failed: {e}")
+
     print(
-        f"Weekly digest finished. sent={sent_count}, send_failures={send_failures}, ai_fallbacks={ai_failures}"
+        f"Weekly digest finished. sent={sent_count}, send_failures={send_failures}, ai_fallbacks={ai_fallbacks}"
     )
     if sent_count == 0:
         print("No messages were sent successfully.")

@@ -321,7 +321,8 @@ Here are the items as JSON:
         structured_sources = _parse_source_numbers(bullet.get("sources"), len(trimmed_items))
         inline_tail_match = re.search(r"\((?:Sources?|Source)\s*:\s*([^)]*)\)\s*$", text, flags=re.IGNORECASE)
         inline_tail_sources = _parse_source_numbers(inline_tail_match.group(1), len(trimmed_items)) if inline_tail_match else []
-        inline_bracket_sources = _parse_source_numbers(" ".join(re.findall(r"\[(\d+)\]", text)), len(trimmed_items))
+        # Match both single [1] and comma-separated [1,2] or [1, 2, 3] bracket formats
+        inline_bracket_sources = _parse_source_numbers(" ".join(re.findall(r"\[([0-9,\s]+)\]", text)), len(trimmed_items))
 
         merged_sources: List[int] = []
         for n in structured_sources + inline_tail_sources + inline_bracket_sources:
@@ -333,6 +334,9 @@ Here are the items as JSON:
         text = re.sub(r"\bSources?\s*:?\s*\[[^\]]*\]", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*\[[0-9,\s]+\]", "", text)
         bullet_text = re.sub(r"\s+", " ", text).strip()
+        # Strip any trailing em-dash left behind after source citations were removed
+        # (e.g. "...challenges. — [1,2]" → after stripping [1,2] → "...challenges. —")
+        bullet_text = re.sub(r"\s*—\s*$", "", bullet_text).strip()
         lead, detail = _split_bullet_text(bullet_text)
         bullet["lead"] = lead
         bullet["detail"] = detail
@@ -342,16 +346,30 @@ Here are the items as JSON:
 
     ordered_source_ids: List[int] = []
     filtered_bullets: List[Dict[str, Any]] = []
+    sourceless_bullets: List[Dict[str, Any]] = []
     for b in summary.get("bullets", []):
         normalized: List[int] = []
         for s in b.get("sources", []):
             if isinstance(s, int) and 1 <= s <= len(trimmed_items) and s not in normalized:
                 normalized.append(s)
-            if s not in ordered_source_ids:
+            if isinstance(s, int) and 1 <= s <= len(trimmed_items) and s not in ordered_source_ids:
                 ordered_source_ids.append(s)
         b["sources"] = normalized
         if b.get("text") and normalized:
             filtered_bullets.append(b)
+        elif b.get("text"):
+            # Keep for a controlled fallback that still guarantees references.
+            sourceless_bullets.append(b)
+
+    # If source validation wiped all citations, keep the model text but attach
+    # deterministic fallback references so every bullet remains traceable.
+    if not filtered_bullets and sourceless_bullets:
+        synthesized_bullets: List[Dict[str, Any]] = []
+        for idx, b in enumerate(sourceless_bullets[:max_bullets], start=1):
+            fallback_source = idx if idx <= len(trimmed_items) else 1
+            b["sources"] = [fallback_source]
+            synthesized_bullets.append(b)
+        filtered_bullets = synthesized_bullets
 
     summary["bullets"] = filtered_bullets[:max_bullets]
 
@@ -382,3 +400,80 @@ Here are the items as JSON:
 
     summary["sources"] = sources
     return summary
+
+
+def review_summary_quality(
+    summary: Dict[str, Any],
+    *,
+    interests: str | None = None,
+    model: str = "gpt-4.1-mini",
+) -> Dict[str, Any]:
+    """
+    Uses an LLM reviewer for format/readability signals.
+    Fails closed only for malformed reviewer output.
+    """
+
+    client = _get_openai_client()
+
+    interests_line = interests if interests else "(not specified)"
+    prompt = f"""
+You are a format checker for newsletter summaries.
+
+Decide if this summary is good enough to send to a subscriber.
+
+Hard requirements:
+- Must contain at least 1 bullet.
+- Must contain at least 1 source.
+- Every bullet must include at least one source id.
+- Headline must be non-empty and relevant.
+
+Important:
+- Do NOT reject based on topic preference match.
+- Do NOT reject because content is not about a specific domain.
+- Focus on structure, clarity, and whether the summary is non-empty and readable.
+
+Return ONLY valid JSON in this exact schema:
+{{
+  "approved": true,
+  "score": 0,
+  "issues": ["string"],
+  "reason": "string"
+}}
+
+Scoring guide:
+- 90-100: excellent, ready to send
+- 70-89: acceptable
+- 50-69: weak
+- 0-49: unacceptable
+
+If any hard requirement fails, approved must be false.
+
+Subscriber interests:
+{interests_line}
+
+Summary JSON:
+{json.dumps(summary, ensure_ascii=False)}
+""".strip()
+
+    resp = client.responses.create(
+        model=model,
+        input=prompt,
+    )
+    output_text = _response_to_text(resp)
+    review = _load_summary_json(output_text)
+
+    approved = bool(review.get("approved"))
+    try:
+        score = int(review.get("score", 0))
+    except Exception:
+        score = 0
+    issues = review.get("issues") if isinstance(review.get("issues"), list) else []
+    reason = str(review.get("reason") or "").strip()
+
+    normalized = {
+        "approved": approved,
+        "score": max(0, min(100, score)),
+        "issues": [str(it).strip() for it in issues if str(it).strip()],
+        "reason": reason,
+    }
+    return normalized

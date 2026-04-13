@@ -4,6 +4,25 @@ on:
   schedule:
     - cron: "15 14 * * 1"  # Mondays 14:15 UTC
   workflow_dispatch:
+    inputs:
+      run_mode:
+        description: "Choose preview (no sends) or send"
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - send
+      preview_recipient_limit:
+        description: "How many subscriber previews to render in preview mode"
+        required: true
+        default: "5"
+        type: string
+      makeup_target_emails:
+        description: "Optional comma-separated emails for make-up sends (send mode only)"
+        required: false
+        default: ""
+        type: string
 
 jobs:
   digest:
@@ -20,7 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Send digest
+      - name: Run digest (preview or send)
         env:
           SUBSCRIBERS_API_URL: ${{ secrets.SUBSCRIBERS_API_URL }}
           SUBSCRIBERS_API_KEY: ${{ secrets.SUBSCRIBERS_API_KEY }}
@@ -29,5 +48,22 @@ jobs:
           GMAIL_SMTP_APP_PASSWORD: ${{ secrets.GMAIL_SMTP_APP_PASSWORD }}
           TEST_TO_EMAIL: ${{ secrets.TEST_TO_EMAIL }}
           TEST_ONLY_MODE: ${{ secrets.TEST_ONLY_MODE }}
+          DIGEST_ALERT_TO_EMAIL: ${{ secrets.DIGEST_ALERT_TO_EMAIL }}
+          MAKEUP_TARGET_EMAILS: ${{ github.event_name == 'workflow_dispatch' && inputs.makeup_target_emails || '' }}
+          PREVIEW_ONLY_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_mode == 'preview' && 'true' || 'false' }}
+          PREVIEW_RECIPIENT_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.preview_recipient_limit || '5' }}
+          PREVIEW_OUTPUT_DIR: tmp/email_previews
         run: |
-          python src/digest.py
+          mkdir -p tmp
+          python src/digest.py | tee tmp/digest.log
+
+      - name: Upload digest preview artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-preview-${{ github.run_id }}
+          if-no-files-found: warn
+          path: |
+            tmp/digest.log
+            tmp/email_previews
+            tmp/failed_recipients.json
