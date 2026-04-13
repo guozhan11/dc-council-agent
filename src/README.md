@@ -19,3 +19,14 @@ This folder contains the core data collection, summarization, and email delivery
 
 - The main daily ingestion entry point is collect.py.
 - The weekly newsletter entry point is digest.py.
+
+## Digest flow highlights
+
+- Uses a strict 7-day window for each weekly run.
+- Builds summaries per subscriber (not one shared summary).
+- Applies interest-aware pre-filtering:
+	- if matches exist, summarizes matched items;
+	- otherwise summarizes general weekly items and adds a no-match notice.
+- Enforces structural quality before send (headline, non-empty bullets, sources, citations).
+- Runs an OpenAI reviewer for format/readability warnings.
+- Supports preview-only execution, delivery-failure alerts, and targeted make-up sends.
