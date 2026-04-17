@@ -17,7 +17,7 @@ Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 ---
 
-## Digest behavior (current)
+## Digest behavior
 
 - Time window: only items from the last 7 days are eligible for each weekly run.
 - Summary input: all items in that 7-day window are sent to OpenAI.

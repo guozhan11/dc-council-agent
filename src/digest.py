@@ -198,30 +198,30 @@ def build_preferences_notice(
 
     if summarized_interests and topics:
         plain = (
-            f"This digest is tailored to your interests in {summarized_interests} and your selected topic(s): {topics}. "
+            f"This AI-curated digest is personalized to your interests in {summarized_interests} and your selected topic(s): {topics} — every story is sourced and verifiable. "
             f"Update your preferences anytime: {update_url}"
         )
         rich = (
-            f"This digest is tailored to your interests in {html.escape(summarized_interests)} and your selected topic(s): {html.escape(topics)}. "
-            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+            f"This AI-curated digest is personalized to your interests in {html.escape(summarized_interests)} and your selected topic(s): {html.escape(topics)} — every story is sourced and verifiable. "
+            f"<a href=\"{update_url}\">Update your preferences</a> anytime!"
         )
     elif summarized_interests:
         plain = (
-            f"This digest is tailored to your interests in {summarized_interests}. "
+            f"This AI-curated digest is personalized to your interests in {summarized_interests} — every story is sourced and verifiable. "
             f"Update your preferences anytime: {update_url}"
         )
         rich = (
-            f"This digest is tailored to your interests in {html.escape(summarized_interests)}. "
-            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+            f"This AI-curated digest is personalized to your interests in {html.escape(summarized_interests)} — every story is sourced and verifiable. "
+            f"<a href=\"{update_url}\">Update your preferences</a> anytime!"
         )
     else:
         plain = (
-            f"This digest is tailored to your selected topic(s): {topics}. "
+            f"This AI-curated digest is personalized to your selected topic(s): {topics} — every story is sourced and verifiable. "
             f"Update your preferences anytime: {update_url}"
         )
         rich = (
-            f"This digest is tailored to your selected topic(s): {html.escape(topics)}. "
-            f"Update your preferences <a href=\"{update_url}\">here</a> anytime!"
+            f"This AI-curated digest is personalized to your selected topic(s): {html.escape(topics)} — every story is sourced and verifiable. "
+            f"<a href=\"{update_url}\">Update your preferences</a> anytime!"
         )
 
     return plain, rich
