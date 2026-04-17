@@ -220,6 +220,7 @@ def summarize_updates(
     model: str = "gpt-4.1-mini",
     max_bullets: int = 8,
     interests: str | None = None,
+    strict_interest: bool = False,
 ) -> Dict[str, Any]:
     """
     Returns a dict like:
@@ -259,6 +260,14 @@ def summarize_updates(
     sources_block = _build_sources_block(trimmed_items)
 
     interests_line = f"Subscriber interests: {interests}" if interests else "Subscriber interests: (not specified)"
+    strict_interest_rules = ""
+    if strict_interest and interests:
+        strict_interest_rules = """
+- STRICT INTEREST MODE IS ON.
+- Every bullet MUST be directly relevant to subscriber interests.
+- If only one item is relevant, return exactly one bullet.
+- Do NOT include general bullets that are unrelated to the subscriber interests.
+""".strip()
 
     prompt = f"""
 You are summarizing a weekly policy/news digest about DC Council.
@@ -276,6 +285,7 @@ Rules:
 - Keep bullets readable for a newsletter.
 - Bullets must be non-overlapping: each bullet should cover a different development, not rephrase the same event.
 - If there are fewer distinct developments, return fewer bullets (1-2 bullets is acceptable). Do not pad with repetitive bullets.
+{strict_interest_rules}
 
 Return ONLY valid JSON in this exact schema:
 
@@ -477,3 +487,66 @@ Summary JSON:
         "reason": reason,
     }
     return normalized
+
+
+def verify_interest_relevance(
+    bullets: List[Dict[str, Any]],
+    *,
+    interests: str | None,
+    model: str = "gpt-4.1-mini",
+) -> Dict[str, Any]:
+    """
+    Returns 1-based indices of bullets relevant to subscriber interests.
+    """
+
+    if not bullets:
+        return {"relevant_indices": [], "reason": "no bullets"}
+    if not interests:
+        return {"relevant_indices": list(range(1, len(bullets) + 1)), "reason": "no interests provided"}
+
+    client = _get_openai_client()
+    compact_bullets = []
+    for idx, b in enumerate(bullets, start=1):
+        compact_bullets.append({"i": idx, "text": str(b.get("text") or "").strip()})
+
+    prompt = f"""
+You are checking whether newsletter bullets are relevant to a subscriber's interests.
+
+Return ONLY valid JSON in this schema:
+{{
+  "relevant_indices": [1, 2],
+  "reason": "string"
+}}
+
+Rules:
+- Include an index only if that bullet is directly relevant to the interests.
+- Exclude generic or unrelated policy bullets.
+- Never include indices outside the provided list.
+
+Subscriber interests:
+{interests}
+
+Bullets JSON:
+{json.dumps(compact_bullets, ensure_ascii=False)}
+""".strip()
+
+    resp = client.responses.create(
+        model=model,
+        input=prompt,
+    )
+    output_text = _response_to_text(resp)
+    parsed = _load_summary_json(output_text)
+
+    relevant_indices = []
+    for value in parsed.get("relevant_indices", []):
+        try:
+            i = int(value)
+        except Exception:
+            continue
+        if 1 <= i <= len(bullets) and i not in relevant_indices:
+            relevant_indices.append(i)
+
+    return {
+        "relevant_indices": relevant_indices,
+        "reason": str(parsed.get("reason") or "").strip(),
+    }

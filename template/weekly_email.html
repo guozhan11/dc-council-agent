@@ -70,6 +70,35 @@
           {% endfor %}
         </ol>
 
+        {% if ai_summary.other_news_bullets and ai_summary.other_news_bullets|length > 0 %}
+          <h3 style="margin: 10px 0 10px; font-size: 16px; color: #111827; letter-spacing: 0.2px;">Other important news</h3>
+          <ol style="padding-left: 18px; margin: 0 0 10px;">
+            {% for b in ai_summary.other_news_bullets %}
+              <li style="margin-bottom: 10px;">
+                {% if b.detail %}
+                  <strong>{{ b.lead }}</strong> — {{ b.detail }}
+                {% elif b.lead %}
+                  <strong>{{ b.lead }}</strong>
+                {% else %}
+                  <strong>{{ b.text }}</strong>
+                {% endif %}
+                {% if b.sources and b.sources|length > 0 %}
+                  <span style="color: #6b7280; font-size: 12px;">
+                    {% for s in b.sources %}
+                      {% set src_url = source_url_map.get(s) %}
+                      {% if src_url %}
+                        <a href="{{ src_url }}" style="color: #6b7280; text-decoration: none;">[{{ s }}]</a>{% if not loop.last %} {% endif %}
+                      {% else %}
+                        [{{ s }}]{% if not loop.last %} {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                  </span>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ol>
+        {% endif %}
+
         <p style="margin: 0 0 10px; color: #52606d; font-size: 13px;">
           Explore the live assistant and continuously generated
           <a href="https://dc-council-digest-1058053589763.us-west1.run.app/" style="color: #1f4eb4;">DC Council updates</a>. Enjoying your digest, or have suggestions? We'd love to hear from you

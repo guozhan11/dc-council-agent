@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from db import connect, init_db, get_items_since
 from utils import score_item
 from emailer_gmail import send_email_gmail_smtp
-from summarizer_openai import summarize_interest_phrase, summarize_updates, review_summary_quality
+from summarizer_openai import summarize_interest_phrase, summarize_updates, review_summary_quality, verify_interest_relevance
 
 load_dotenv()
 
@@ -337,6 +337,34 @@ def main() -> int:
                 return False, f"bullet {idx} has no citations"
         return True, "ok"
 
+    def _renumber_summary_sources(summary: dict) -> None:
+        bullets = summary.get("bullets") or []
+        sources = summary.get("sources") or []
+        ordered_source_ids = []
+        for b in bullets:
+            for s in b.get("sources", []):
+                if isinstance(s, int) and s not in ordered_source_ids:
+                    ordered_source_ids.append(s)
+
+        renumber_map = {old: idx + 1 for idx, old in enumerate(ordered_source_ids)}
+        for b in bullets:
+            b["sources"] = [renumber_map[s] for s in b.get("sources", []) if s in renumber_map]
+
+        source_by_n = {s.get("n"): s for s in sources if isinstance(s.get("n"), int)}
+        summary["sources"] = []
+        for old in ordered_source_ids:
+            src = source_by_n.get(old)
+            if not src:
+                continue
+            summary["sources"].append(
+                {
+                    "n": renumber_map[old],
+                    "title": src.get("title") or "",
+                    "url": src.get("url") or "",
+                    "source": src.get("source") or "",
+                }
+            )
+
     repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     config_path = os.path.join(repo_root, "config.yaml")
     if len(sys.argv) > 1:
@@ -464,7 +492,78 @@ def main() -> int:
                 model="gpt-4.1-mini",
                 max_bullets=3,
                 interests=interests,
+                strict_interest=bool(interests and not no_interest_match),
             )
+
+            # OpenAI relevance verification for interest-specific summaries.
+            if interests and not no_interest_match and ai_summary.get("bullets"):
+                relevant_indices = []
+                for attempt in range(2):
+                    verification = verify_interest_relevance(
+                        ai_summary.get("bullets", []),
+                        interests=interests,
+                        model="gpt-4.1-mini",
+                    )
+                    relevant_indices = verification.get("relevant_indices", [])
+                    total_bullets = len(ai_summary.get("bullets", []))
+                    if total_bullets > 0 and len(relevant_indices) == total_bullets:
+                        break
+                    if attempt == 0:
+                        print(
+                            f"Relevance check retry for {sub.get('email')}: "
+                            f"kept={len(relevant_indices)} of {total_bullets}."
+                        )
+                        ai_summary = summarize_updates(
+                            items_for_ai,
+                            model="gpt-4.1-mini",
+                            max_bullets=3,
+                            interests=interests,
+                            strict_interest=True,
+                        )
+
+                if relevant_indices:
+                    bullets = ai_summary.get("bullets", [])
+                    ai_summary["bullets"] = [bullets[i - 1] for i in relevant_indices if 1 <= i <= len(bullets)]
+                    _renumber_summary_sources(ai_summary)
+
+                # If only one relevant bullet remains, add two general bullets in
+                # a separate section: Other important news.
+                if len(ai_summary.get("bullets", [])) == 1:
+                    other_summary = summarize_updates(
+                        top_for_ai,
+                        model="gpt-4.1-mini",
+                        max_bullets=2,
+                        interests=None,
+                    )
+                    other_bullets = other_summary.get("bullets", [])[:2]
+                    other_sources = other_summary.get("sources", [])
+                    source_offset = len(ai_summary.get("sources", []))
+
+                    # Keep source numbering continuous across sections.
+                    renumbered_other_sources = []
+                    for s in other_sources:
+                        n = s.get("n")
+                        if isinstance(n, int):
+                            renumbered_other_sources.append(
+                                {
+                                    "n": n + source_offset,
+                                    "title": s.get("title") or "",
+                                    "url": s.get("url") or "",
+                                    "source": s.get("source") or "",
+                                }
+                            )
+
+                    for b in other_bullets:
+                        b["sources"] = [
+                            (s + source_offset) for s in b.get("sources", []) if isinstance(s, int)
+                        ]
+
+                    ai_summary["other_news_bullets"] = other_bullets
+                    ai_summary["other_news_sources"] = renumbered_other_sources
+                    ai_summary["sources"] = (ai_summary.get("sources", []) or []) + renumbered_other_sources
+                else:
+                    ai_summary["other_news_bullets"] = []
+                    ai_summary["other_news_sources"] = []
             # Guard: AI succeeded but returned unusable references.
             # Patch in rule-based bullets/sources so emails always carry
             # valid citations.
