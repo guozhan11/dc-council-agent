@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Shared with youtube_live_daily.yml: both push db.sqlite, so run one at a time
+concurrency:
+  group: db-sqlite-writer
+  cancel-in-progress: false
+
 jobs:
   collect:
     runs-on: ubuntu-latest

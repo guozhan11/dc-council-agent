@@ -8,6 +8,11 @@ on:
 permissions:
   contents: write
 
+# Shared with collect_daily.yml: both push db.sqlite, so run one at a time
+concurrency:
+  group: db-sqlite-writer
+  cancel-in-progress: false
+
 jobs:
   collect_youtube:
     runs-on: ubuntu-latest
