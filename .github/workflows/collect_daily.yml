@@ -18,6 +18,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Resolve main when the job starts, not the SHA pinned at trigger time
+          ref: main
 
       - uses: actions/setup-python@v5
         with:
