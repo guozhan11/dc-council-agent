@@ -2,6 +2,8 @@
 
 A lightweight pipeline that collects DC Council updates from multiple sources, stores them in SQLite, and sends a weekly email digest to subscribers. The newsletter includes a three-bullet AI summary with clickable sources and supports per-subscriber customization based on selected topics and free-text interests.
 
+Read the project introduction on Georgetown University's McCourt School of Public Policy website: [Introducing the DC Council Weekly Digest](https://mccourt.georgetown.edu/research-centers/introducing-the-dc-council-weekly-digest/) by Nora Guo Zhan (October 4, 2026).
+
 Subscribe [here](https://guozhan11.github.io/dc-council-agent/)!
 
 ![Subscribe form preview](docs/images/sub_page.png)
